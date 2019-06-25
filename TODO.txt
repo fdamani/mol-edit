@@ -1,0 +1,4 @@
+6.25.19
+	- Predict potency conditioned on structure
+		- Implement RNN
+		- Compare SMILES and SELFIES based representations.
