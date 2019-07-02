@@ -7,6 +7,9 @@ import rdkit as rd
 import pandas as pd
 import numpy as np
 import IPython
+import re
+import selfies
+from selfies import encoder, decoder
 
 from IPython import embed
 import random
@@ -45,6 +48,30 @@ def unique_chars(x):
 			chars.add(sx[j])
 	return list(chars)
 
+def encode_to_selfies(struct, pot):
+	'''smiles to selfies'''
+	selfies_struct = []
+	selfies_pot = []
+	invalid_selfies = []
+	for i in range(struct.shape[0]):
+		ax = encoder(struct[i])
+		if ax != -1:
+			selfies_struct.append(ax)
+			selfies_pot.append(pot[i])
+		else:
+			invalid_selfies.append(struct[i])
+	return selfies_struct, selfies_pot, invalid_selfies
+
+def unique_selfies_chars(x):
+	chars = set([])
+	count = 0
+	invalid_selfies = []
+	for i in range(len(x)):
+		sx = re.findall(r"\[[^\]]*\]", x[i])
+		for j in range(len(sx)):
+			chars.add(sx[j])
+	return list(chars)
+
 # Find letter index from all_letters, e.g. "a" = 0
 def letterToIndex(letter, chars_to_int):
 	return chars_to_int[letter]
@@ -74,8 +101,10 @@ def lineToTensor(line, chars_to_int, n_letters):
 
 # Turn a line into a <line_length x 1 x n_letters>,
 # or an array of one-hot letter vectors
-def lineToIndices(line, chars_to_int):
+def lineToIndices(line, chars_to_int, isSELFIE=True):
 	indices = []
+	if isSELFIE:
+		line = re.findall(r"\[[^\]]*\]", line)
 	for li, letter in enumerate(line):
 		indices.append(chars_to_int[letter])
 	return indices

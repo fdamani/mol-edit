@@ -13,6 +13,8 @@ import utils
 import numpy as np
 import matplotlib.pyplot as plt
 import torch.nn.utils.rnn as rnn_utils
+import selfies
+from selfies import encoder, decoder
 
 from sklearn.metrics import r2_score
 from IPython import embed
@@ -26,22 +28,27 @@ torch.manual_seed(seed)
 np.random.seed(seed)  # Numpy module.
 
 
-
-def process_data(file):
+def process_data(file, isSELFIE=False):
 	# read data
 	dat = pd.read_csv('/data/potency_dataset_with_props.csv')
 	# limit to first 10k samples
-	#dat = dat.head(10000)
+	# dat = dat.head(1000)
 	
 	# permute rows
 	dat = dat.sample(frac=1).reset_index(drop=True)
 
 	structure = dat['Structure']
-	Y = torch.log10(torch.tensor(dat['pot_uv'], device=device))
-	
-	chars = utils.unique_chars(structure)
+	pot = dat['pot_uv']
+	if isSELFIE:
+		structure, pot, invalid_selfies = utils.encode_to_selfies(structure, pot)
+
+	Y = torch.log10(torch.tensor(pot, device=device))
+	if isSELFIE:
+		chars = utils.unique_selfies_chars(structure)
+	else:
+		chars = utils.unique_chars(structure)
 	n_chars = len(chars)
-	n_samples = structure.shape[0]
+	n_samples = len(structure)
 	chars_to_int = {}
 	int_to_chars = {}
 	for i in range(len(chars)):
@@ -50,8 +57,9 @@ def process_data(file):
 
 	X = []
 	for struct in structure:
-		indices = utils.lineToIndices(struct, chars_to_int)
+		indices = utils.lineToIndices(struct, chars_to_int, isSELFIE)
 		X.append(indices)
+
 	return X, Y, n_chars, n_samples
 
 def train_test_split(X, Y, n_samples, train_percent=.7):
@@ -81,13 +89,25 @@ def get_packed_batch(batch_x, batch_y):
 	batch_packed_x = batch_packed_x.to('cuda')
 	return batch_packed_x, batch_y
 
-f = '/data/potency_dataset_with_props.csv'
-X, Y, vocab_size, n_total_samples = process_data(f)
-X_train, Y_train, X_test, Y_test = train_test_split(X, Y, n_total_samples)
-n_train_samples = len(X_train)
-n_test_samples = len(X_test)
+
+load_pytorch_obj = True
+if load_pytorch_obj:
+	f = '/data/pytorch_obj/smiles_data.pth'
+	#f = '/data/pytorch_obj/selfies_data.pth'
+	X_train, Y_train, X_test, Y_test, n_train_samples, n_test_samples, vocab_size = torch.load(f)
+else:
+	f = '/data/potency_dataset_with_props.csv'
+	X, Y, vocab_size, n_total_samples = process_data(f)
+	X_train, Y_train, X_test, Y_test = train_test_split(X, Y, n_total_samples)
+
+	n_train_samples = len(X_train)
+	n_test_samples = len(X_test)
+
+	# torch.save((X_train, Y_train, X_test, Y_test, n_train_samples, n_test_samples, vocab_size), save_file)
+
 # declare RNN object
 hidden_size = 128
+
 net = rnn.EncoderRNN(vocab_size, hidden_size)
 net.to(device)
 
@@ -95,7 +115,7 @@ net.to(device)
 criterion = nn.MSELoss()
 
 # define optimizer
-lr = 1e-3
+lr = 1e-4
 optimizer = optim.Adam(net.parameters(), lr=lr)
 
 losses = []
@@ -106,12 +126,10 @@ test_avg_loss, r2_avg = [], []
 batch_size = 128
 iter = 0
 valid_every = 500
-max_iter = 20000
+max_iter = 50000
 n_epochs = int(float(max_iter) / (float(n_train_samples) / batch_size))
 
 for epoch in range(n_epochs):
-	print ('epoch: ', epoch)
-
 	permutation = torch.randperm(n_train_samples)
 
 	for i in range(0, n_train_samples, batch_size):
@@ -132,11 +150,11 @@ for epoch in range(n_epochs):
 
 		with torch.no_grad():
 			losses.append(loss.item())
-			if iter % 25 == 0:
+			if iter % valid_every == 0 and iter > 0:
 				avg_loss.append(np.mean(losses))
-				print ('iter: ', iter, ' loss: ', np.mean(losses))
+				print ('iter: ', iter, ' loss: ', np.mean(losses),)
 				losses = []
-			if iter % valid_every == 0 and valid_every > 0:
+			if iter % valid_every == 0 and iter > 0:
 				# print validation accuracy
 				test_permutation = torch.randperm(n_test_samples)
 				valid_loss = []
@@ -155,6 +173,7 @@ for epoch in range(n_epochs):
 				r2_val = r2_score(torch.stack(valid_target[:-1]).flatten(), 
 						torch.stack(valid_preds[:-1]).flatten())
 				print ('valid: ', np.mean(valid_loss), 'r2 score: ', r2_val)
+				print ('\n')
 				test_avg_loss.append(np.mean(valid_loss))
 				r2_avg.append(r2_val)
 		iter +=1
