@@ -5,12 +5,16 @@ Options for SMILES and SIMILES-based representation.
 import torch
 import rdkit as rd
 import pandas as pd
+import numpy as np
 import IPython
 
 from IPython import embed
+import random
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+seed=0
+torch.manual_seed(seed)
+np.random.seed(seed)  # Numpy module.
 
 def train_test_split(x, y, test=.3, imbalance=True):
 	'''
