@@ -1,3 +1,19 @@
+7.2.19
+	- mini-batching using packed sequence.
+	- SELFIES-based representation
+		- 498 compounds can not be encoded into SELFIES (see mol-edit/output/pot_pred_selfies/)
+		- r^2 score on validation is .75 while SMILES was ~.83.
+			- SELFIES vocab size is 88 while SMILES is 38
+				- current implementation does not do any additional regularization (besides GRU cell)
+				- 2x number of parameters -> discrepancy might be explained by overfitting.
+7.1.19
+	- overfit RNN to small dataset
+	- run on full dataset and show validation / train loss
+	- minor optimizations:
+		- pass as input to forward full word and have self.rnn return final hidden state
+		- mini-batching
+6.26.19
+	- implemented RNN for potency prediction
 6.25.19
 	- Predict potency conditioned on structure
 		- Implement RNN
