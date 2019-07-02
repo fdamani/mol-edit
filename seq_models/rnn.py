@@ -21,6 +21,11 @@ class EncoderRNN(nn.Module):
 		output, hidden = self.gru(output, hidden)
 		return output, hidden
 
+	def forward_full(self, input, hidden):
+		hidden = self.initHidden()
+		embed()
+
+
 	def score(self, hidden):
 		'''
 			fully connected layer outputting a single scalar value

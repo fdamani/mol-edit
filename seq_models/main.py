@@ -11,20 +11,25 @@ import pandas as pd
 import IPython
 import utils
 import numpy as np
+import matplotlib.pyplot as plt
+import torch.nn.utils.rnn as rnn_utils
 
 from IPython import embed
 from torch import optim
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
+torch.manual_seed(7)
+np.random.seed(7)
 # read data
 dat = pd.read_csv('/data/potency_dataset_with_props.csv')
+# limit to first 10k samples
+dat = dat.head(10000)
 # permute rows
-dat = dat.sample(frac=1).reset_index(drop=True)
+# dat = dat.sample(frac=1).reset_index(drop=True)
 
 structure = dat['Structure']
-pot = torch.tensor(dat['pot_uv'], device=device)
-
-
+pot = torch.log10(torch.tensor(dat['pot_uv'], device=device))
 
 chars = utils.unique_chars(structure)
 n_chars = len(chars)
@@ -50,10 +55,11 @@ net.to(device)
 # define loss
 criterion = nn.MSELoss()
 # define optimizer
-lr = 1e-2
+lr = 1e-3
 optimizer = optim.Adam(net.parameters(), lr=lr)
-n_iters = 100000
+n_iters = 2000
 losses = []
+avg_loss = []
 for iter in range(0, n_iters):
 	optimizer.zero_grad()
 	sample = structure[iter % n_samples]
@@ -61,14 +67,19 @@ for iter in range(0, n_iters):
 	indices = torch.LongTensor(utils.lineToIndices(sample, chars_to_int)).view(-1, 1).to('cuda')
 	# initialize hidden state
 	hidden = net.initHidden()
+	embed()
 	for i in range(len(indices)):
 		_, hidden = net(indices[i], hidden)
 	output = net.score(hidden)
 	loss = criterion(output, target.view(1, 1, -1))
 	loss.backward()
 	optimizer.step()
-	losses.append(loss.item())
 	with torch.no_grad():
-		if iter % 100 == 0:
+		losses.append(loss.item())
+		if iter % 125 == 0:
+			avg_loss.append(np.mean(losses))
 			print ('iter: ', iter, ' loss: ', np.mean(losses))
 			losses = []
+
+plt.plot(avg_loss)
+plt.savefig('loss.png')
