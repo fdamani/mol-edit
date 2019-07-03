@@ -12,11 +12,11 @@ torch.manual_seed(seed)
 np.random.seed(seed)  # Numpy module.
 
 class EncoderRNN(nn.Module):
-	def __init__(self, vocab_size, hidden_size):
+	def __init__(self, vocab_size, embed_size, hidden_size):
 		super(EncoderRNN, self).__init__()
 		self.hidden_size = hidden_size
-		self.embedding = nn.Embedding(vocab_size, hidden_size)
-		self.gru = nn.GRU(hidden_size, hidden_size, batch_first=True)
+		self.embedding = nn.Embedding(vocab_size, embed_size)
+		self.gru = nn.GRU(embed_size, hidden_size, batch_first=True)
 
 		self.fc = nn.Linear(hidden_size, 1)
 

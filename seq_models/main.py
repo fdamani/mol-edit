@@ -14,8 +14,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch.nn.utils.rnn as rnn_utils
 import selfies
-from selfies import encoder, decoder
 
+from selfies import encoder, decoder
+from torch.nn.utils import clip_grad_norm_
 from sklearn.metrics import r2_score
 from IPython import embed
 from torch import optim
@@ -42,7 +43,8 @@ def process_data(file, isSELFIE=False):
 	if isSELFIE:
 		structure, pot, invalid_selfies = utils.encode_to_selfies(structure, pot)
 
-	Y = torch.log10(torch.tensor(pot, device=device))
+	# take -log10 of potency. we want higher values to mean more potent.
+	Y = -torch.log10(torch.tensor(pot, device=device))
 	if isSELFIE:
 		chars = utils.unique_selfies_chars(structure)
 	else:
@@ -106,16 +108,17 @@ else:
 	# torch.save((X_train, Y_train, X_test, Y_test, n_train_samples, n_test_samples, vocab_size), save_file)
 
 # declare RNN object
-hidden_size = 128
+embed_size = 128
+hidden_size = 512
 
-net = rnn.EncoderRNN(vocab_size, hidden_size)
+net = rnn.EncoderRNN(vocab_size, embed_size, hidden_size)
 net.to(device)
 
 # define loss
 criterion = nn.MSELoss()
 
 # define optimizer
-lr = 1e-4
+lr = 1e-5
 optimizer = optim.Adam(net.parameters(), lr=lr)
 
 losses = []
@@ -146,6 +149,7 @@ for epoch in range(n_epochs):
 		
 		# backprop and gradient step
 		loss.backward()
+		clip_grad_norm_(net.parameters(), 0.5)
 		optimizer.step()
 
 		with torch.no_grad():

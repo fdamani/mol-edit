@@ -1,3 +1,11 @@
+7.3.19
+	TODO:
+		- generate training data (view different versions-- moderate and high tanimoto simlarity, inactive to active, inactive to moderately active, inactive to highly active)
+		- implement seq2seq model
+		- generate suite of evaluation methods to evaluate results.
+
+
+
 7.2.19
 	- mini-batching using packed sequence.
 	- SELFIES-based representation
@@ -6,6 +14,12 @@
 			- SELFIES vocab size is 88 while SMILES is 38
 				- current implementation does not do any additional regularization (besides GRU cell)
 				- 2x number of parameters -> discrepancy might be explained by overfitting.
+			- remove 498 invalid SELFIES compounds from SMILES dataset?
+	- initial mmpa training data generation
+		- compute tanimoto simlarity based on morgan fingerprint.
+		- initial strategy to generate training data:
+			- find pairs between inactive (potency = -3.) and active (potency != -3.) with high tanimoto similarity.
+				- use rest of inactive compounds (235k) to form pairs. -> keep high tanimoto similarity.
 7.1.19
 	- overfit RNN to small dataset
 	- run on full dataset and show validation / train loss
