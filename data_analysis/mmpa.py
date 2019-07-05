@@ -2,15 +2,17 @@
 Generate training pairs using Matched molecular pair analysis
 Find all pairs of compounds with tanimoto similarity > x and large differences in potency values
 '''
+import torch
 import rdkit
-from rdkit import Chem, DataStructs
-from rdkit.Chem import AllChem
-from rdkit.Chem import Descriptors
 import rdkit.Chem.QED as QED
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 from IPython import embed
+from rdkit import Chem, DataStructs
+from rdkit.Chem import AllChem
+from rdkit.Chem import Descriptors
 
 def similarity(a, b):
 	'''https://github.com/wengong-jin/iclr19-graph2graph/blob/master/props/properties.py'''
@@ -29,16 +31,21 @@ def similarity(a, b):
 if __name__ == "__main__":
 	dat = pd.read_csv('/data/potency_dataset_with_props.csv')
 	dat = dat.sample(frac=1).reset_index(drop=True)
-	dat = dat.head(1000)
-
 	structure = dat['Structure']
 	pot = -np.log10(dat['pot_uv'])
 	similarity_scores = []
-	inactive_structs = structure[pot == -3.]
-	active_structs = structure[pot > -3.]
-	for sx in inactive_structs:
-		print(sx)
-		for ax in active_structs:
-			similarity_scores.append((sx, ax, similarity(sx, ax)))
-	similarity_scores = pd.DataFrame(similarity_scores)
-	embed()
+
+	# decide on transform
+	# inactive structure has potency value of -3.
+	inactive_structs = structure[pot == -3.].values
+	# limit to 75 percentile potency threshold (conditioned on non-zero potency)
+	pot_thresh = np.percentile(pot[pot > -3.], 50)
+	active_structs = structure[pot > pot_thresh].values
+	active_structs_pot = pot[pot > pot_thresh].values
+	for idx, sx in enumerate(inactive_structs):
+		for ind,ax in enumerate(active_structs):
+			pot_val = active_structs_pot[ind]
+			similarity_scores.append((sx, ax, similarity(sx, ax), pot_val))
+		if idx % 5000 == 0:
+			torch.save(pd.DataFrame(similarity_scores), '/data/pytorch_obj/mmpa_similarity_full.pth')
+	torch.save(pd.DataFrame(similarity_scores), '/data/pytorch_obj/mmpa_similarity_full.pth')
