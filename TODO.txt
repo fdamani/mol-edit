@@ -1,4 +1,29 @@
+7.11
+	- refactored seq2seq code
+	- new alphabet class ("Lang")
+	- new training code
+	- new evaluation code
+	- encoder and decoder (no attention) nets implemented
+	- successfully overfitting to 1k training pairs.
+
+	Next:
+		- measure validation performance
+		- scale to larger dataset
+		- implement attention-based decoders
 7.8.19
+	TODO:
+		- run regression model (smiles and selfies) for logp06 and qed and compare r^2 values
+		- implement seq2seq model (see wengong jin implementation)
+		- implement variational seq2seq model (see wengong jin implementation)
+		- how do these compare to their work? compare on selfies representation.
+		- generate a complete set of potency mmpa training datasets
+			- varying similarity thresholds
+			- varying levels of potency
+			- write script to run this.
+
+	DONE:
+		- generated regression training data for penalized logp and qed
+
 
 7.3.19
 	TODO:
