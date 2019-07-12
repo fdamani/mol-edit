@@ -40,7 +40,9 @@ np.random.seed(seed)  # Numpy module.
 f = '/home/fdamani/mol-edit/data/qed/train_pairs.txt'
 input_seq, output_seq, lang = read_data(f, selfies=True)
 input_seq, output_seq, lang = filter_low_resource(input_seq, output_seq, lang)
-pairs = pd.DataFrame([input_seq, output_seq]).T
+X_train, Y_train, X_valid, Y_valid = train_test_split(input_seq, output_seq)
+pairs = pd.DataFrame([X_train, Y_train]).T
+valid_pairs = pd.DataFrame([X_valid, Y_valid]).T
 
 # batch_size=2
 # input_var, input_lengths, target_var, target_lengths = random_batch(batch_size, pairs, lx)
@@ -82,7 +84,8 @@ pairs = pd.DataFrame([input_seq, output_seq]).T
 def train(input_batches,
 		  input_lengths, 
 		  target_batches, 
-		  target_lengths, 
+		  target_lengths,
+		  batch_size, 
 		  encoder, 
 		  decoder, 
 		  encoder_optimizer, 
@@ -129,12 +132,54 @@ def train(input_batches,
 	# Update parameters with optimizers
 	encoder_optimizer.step()
 	decoder_optimizer.step()
-	print(loss.item())
 	return loss.item(), ec, dc
 
+def validate(input_batches,
+			 input_lengths,
+			 target_batches,
+			 target_lengths,
+			 batch_size,
+			 encoder,
+			 decoder,
+			 teacher_forcing=True):
+	loss = 0
+	# Run words through encoder
+	encoder_outputs, encoder_hidden = encoder(input_batches, input_lengths)
+	
+	# Prepare input and output variables
+	decoder_input = torch.LongTensor([lang.SOS_token] * batch_size)
+	decoder_hidden = encoder_hidden[:decoder.n_layers] # Use last (forward) hidden state from encoder
+
+	max_target_length = max(target_lengths)
+	all_decoder_outputs = torch.zeros(max_target_length, batch_size, decoder.vocab_size)
+   
+	decoder_input = decoder_input.cuda()
+	all_decoder_outputs = all_decoder_outputs.cuda()
+
+	# Run through decoder one time step at a time
+	for t in range(max_target_length):
+		decoder_output, decoder_hidden = decoder(
+			decoder_input, decoder_hidden)
+
+		all_decoder_outputs[t] = decoder_output
+		if teacher_forcing:
+			decoder_input = target_batches[t] # Teacher forcing: next input is current target
+
+	# Loss calculation and backpropagation
+	loss = masked_cross_entropy(
+		all_decoder_outputs.transpose(0, 1).contiguous(), # -> batch x seq
+		target_batches.transpose(0, 1).contiguous(), # -> batch x seq
+		target_lengths)
+
+	return loss.item()
+
 def evaluate(input_seq, max_length=100):
-	input_lengths = [len(input_seq)]
 	input_seqs = [indexes_from_compound(lang, input_seq)]
+	input_lengths = len(input_seqs)
+
+	#input_lengths = [len(input_seq)]
+	#input_seqs = [indexes_from_compound(lang, input_seq)]
+	embed()
 	input_batches = torch.LongTensor(input_seqs).transpose(0, 1)
 	
 	input_batches = input_batches.cuda()
@@ -184,12 +229,11 @@ def evaluate_randomly():
 	rand_ind = np.random.choice(num_samples)
 	rand_pair = pairs.iloc[rand_ind]
 	input_seq, target_seq = rand_pair[0], rand_pair[1]
+	embed()
 	output_seq = evaluate(input_seq)
 	print('>', input_seq)
 	print('=', target_seq)
 	print('<', output_seq)
-
-
 
 def as_minutes(s):
 	m = math.floor(s / 60)
@@ -199,7 +243,7 @@ def as_minutes(s):
 def time_since(since, percent):
 	now = time.time()
 	s = now - since
-	es = s / (percent)
+	es = s / (float(percent))
 	rs = es - s
 	return '%s (- %s)' % (as_minutes(s), as_minutes(rs))
 
@@ -207,6 +251,7 @@ hidden_size = 56
 n_layers = 1
 dropout = 0.1
 batch_size = 10
+valid_batch_size = len(valid_pairs)
 
 clip = 50.0
 teacher_forcing_ratio = 0.5
@@ -214,8 +259,8 @@ learning_rate = 1e-3
 n_epochs = 10000
 epoch = 0
 plot_every = 1
-print_every = 1
-evaluate_every = 1
+print_every = 100
+evaluate_every = 100
 
 # initialize models
 encoder = net.EncoderRNN(vocab_size=lang.n_chars, 
@@ -247,17 +292,16 @@ eca = 0
 dca = 0
 
 while epoch < n_epochs:
-	print(epoch)
 	epoch += 1
 
 	# get random batch
 	input_batches, input_lengths, target_batches, target_lengths = random_batch(batch_size, pairs, lang)
-
 	# run train func
 	loss, ec, dc = train(input_batches,
 					     input_lengths,
 					     target_batches,
 					     target_lengths,
+					     batch_size,
 					     encoder,
 					     decoder,
 					     encoder_opt,
@@ -267,12 +311,26 @@ while epoch < n_epochs:
 	eca += ec
 	dca += dc
 
+
+	if epoch % evaluate_every == 0:
+		with torch.no_grad():
+			input_batches, input_lengths, target_batches, target_lengths = random_batch(valid_batch_size, valid_pairs, lang, replace=False)
+			valid_loss = validate(input_batches,
+							input_lengths, 
+							target_batches, 
+							target_lengths,
+							valid_batch_size, 
+							encoder, decoder, 
+							teacher_forcing=True)
+			print ('valid loss: ', valid_loss)
+
 	if epoch % print_every == 0:
 		with torch.no_grad():
 			print_loss_avg = print_loss_total / print_every
 			print_loss_total = 0
 			print_summary = '%s (%d %d%%) %.4f' % (time_since(start, epoch / float(n_epochs)), 
 				epoch, epoch / n_epochs * 100, print_loss_avg)
+			print(print_summary)
 	
 	# if epoch % evaluate_every == 0:
 	# 	with torch.no_grad():

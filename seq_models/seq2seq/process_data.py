@@ -22,6 +22,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def read_data(file, selfies=False, reverse=False):
 	# read data
 	dat = pd.read_csv(file, header=None, delimiter=' ')
+	dat = dat.sample(frac=1).reset_index(drop=True)
 	dat = dat.head(100)
 	# limit to first 10k samples
 	if reverse:
@@ -113,7 +114,17 @@ def pad_seq(seq, max_length, lx):
     seq += [lx.PAD_token for i in range(max_length - len(seq))]
     return seq
 
-def random_batch(batch_size, pairs, lx):
+def train_test_split(X, Y, train_percent=.7):
+	'''train test split: assume data has already been permuted'''
+	n_samples = len(X)
+	train_ind = int(n_samples * train_percent)
+	X_train, X_test = [], []
+	
+	X_train, Y_train = X[0:train_ind], Y[0:train_ind]
+	X_test, Y_test = X[train_ind:], Y[train_ind:]
+	return X_train, Y_train, X_test, Y_test
+
+def random_batch(batch_size, pairs, lx, replace=True):
 	'''get a random mini batch of training pairs
 
 	sort by length in descending order
@@ -121,7 +132,7 @@ def random_batch(batch_size, pairs, lx):
 	'''
 	input_seqs, output_seqs = [], []
 	num_samples = pairs.shape[0]
-	rand_inds = np.random.choice(num_samples, batch_size)
+	rand_inds = np.random.choice(num_samples, batch_size, replace=replace)
 	for ind in rand_inds:
 		pair = pairs.iloc[ind]
 		input_seqs.append(indexes_from_compound(lx, pair[0]))
