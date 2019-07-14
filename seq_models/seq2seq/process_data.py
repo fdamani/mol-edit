@@ -23,7 +23,6 @@ def read_data(file, selfies=False, reverse=False):
 	# read data
 	dat = pd.read_csv(file, header=None, delimiter=' ')
 	dat = dat.sample(frac=1).reset_index(drop=True)
-	dat = dat.head(100)
 	# limit to first 10k samples
 	if reverse:
 		input_seq, output_seq = dat[1], dat[0]
@@ -50,6 +49,21 @@ def read_data(file, selfies=False, reverse=False):
 		lx.index_chars(comp)
 
 	return input_seq, output_seq, lx
+
+
+def read_single_data(file, lang, selfies=False):
+	dat = pd.read_csv(file, header=None).squeeze()
+	if selfies:
+		dat = smiles_to_selfies(dat)
+	dat = pd.DataFrame(dat).dropna().squeeze()
+	seqs = []
+	for sx in dat:
+		seqs.append(indexes_from_compound(lang, sx))
+	lengths = [len(s) for s in seqs]
+	seqs = torch.LongTensor(seqs).transpose(0, 1)
+	seqs.to(device)
+	return seqs, lengths
+
 
 def filter_low_resource(input_list, output_list, lx, MIN_COUNT=5):
 	'''
@@ -109,6 +123,9 @@ def selfies_to_smiles(x):
 def indexes_from_compound(lang, x):
 	sx = re.findall(r"\[[^\]]*\]", x)
 	return [lang.char2index[char] for char in sx] + [lang.EOS_token]
+
+def compound_from_indexes(lang, x):
+	return [lang.index2char[ind.item()] for ind in x]
 
 def pad_seq(seq, max_length, lx):
     seq += [lx.PAD_token for i in range(max_length - len(seq))]

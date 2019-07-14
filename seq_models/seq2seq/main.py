@@ -20,6 +20,9 @@ import masked_cross_entropy
 import random
 import time
 import math
+import sys
+sys.path.insert(0, '../../data_analysis/')
+import properties
 
 from process_data import *
 from selfies import encoder, decoder
@@ -37,12 +40,24 @@ seed=0
 torch.manual_seed(seed)
 np.random.seed(seed)  # Numpy module.
 
-f = '/home/fdamani/mol-edit/data/qed/train_pairs.txt'
-input_seq, output_seq, lang = read_data(f, selfies=True)
-input_seq, output_seq, lang = filter_low_resource(input_seq, output_seq, lang)
-X_train, Y_train, X_valid, Y_valid = train_test_split(input_seq, output_seq)
+pytorch_load = True
+if pytorch_load:
+	X_train, Y_train, X_valid, Y_valid, lang = torch.load('/home/fdamani/mol-edit/data/qed/pytorch_data.pth')
+else:
+	f = '/home/fdamani/mol-edit/data/qed/train_pairs.txt'
+	input_seq, output_seq, lang = read_data(f, selfies=True)
+	input_seq, output_seq, lang = filter_low_resource(input_seq, output_seq, lang)
+	X_train, Y_train, X_valid, Y_valid = train_test_split(input_seq, output_seq)
+	data = [X_train, Y_train, X_valid, Y_valid, lang]
+	torch.save(data, '/home/fdamani/mol-edit/data/qed/pytorch_data.pth')
+
 pairs = pd.DataFrame([X_train, Y_train]).T
 valid_pairs = pd.DataFrame([X_valid, Y_valid]).T
+
+# test data
+#f = '/home/fdamani/mol-edit/data/qed/valid.txt'
+#test_seqs, lengths = read_single_data(f, lang, selfies=True)
+
 
 # batch_size=2
 # input_var, input_lengths, target_var, target_lengths = random_batch(batch_size, pairs, lx)
@@ -165,7 +180,7 @@ def validate(input_batches,
 		if teacher_forcing:
 			decoder_input = target_batches[t] # Teacher forcing: next input is current target
 
-	# Loss calculation and backpropagation
+	# Loss calculation
 	loss = masked_cross_entropy(
 		all_decoder_outputs.transpose(0, 1).contiguous(), # -> batch x seq
 		target_batches.transpose(0, 1).contiguous(), # -> batch x seq
@@ -173,7 +188,60 @@ def validate(input_batches,
 
 	return loss.item()
 
-def evaluate(input_seq, max_length=100):
+def evaluate(input_batches,
+			 input_lengths,
+			 target_batches,
+			 target_lengths,
+			 batch_size,
+			 encoder,
+			 decoder,
+			 greedy=True):
+	loss = 0
+	# Run words through encoder
+	encoder_outputs, encoder_hidden = encoder(input_batches, input_lengths)
+	
+	# Prepare input and output variables
+	decoder_input = torch.LongTensor([lang.SOS_token] * batch_size)
+	decoder_hidden = encoder_hidden[:decoder.n_layers] # Use last (forward) hidden state from encoder
+
+
+	max_target_length = 100
+	all_decoder_outputs = torch.zeros(max_target_length, batch_size, decoder.vocab_size)
+   
+	decoder_input = decoder_input.cuda()
+	all_decoder_outputs = all_decoder_outputs.cuda()
+
+	decoded_chars = []
+
+	# Run through decoder one time step at a time
+	for t in range(max_target_length):
+		decoder_output, decoder_hidden = decoder(
+			decoder_input, decoder_hidden)
+		output = functional.log_softmax(decoder_output, dim=-1)
+		# max
+		if greedy:
+			topv, topi = output.data.topk(1)
+			decoder_input = topi.view(1)
+		# sample
+		else:
+			m = torch.distributions.Multinomial(logits=output)
+			samp = m.sample()
+			decoder_input = samp.squeeze().nonzero().view(1)
+		
+		if decoder_input.item() == lang.EOS_token:
+			decoded_chars.append('EOS')
+			break
+		else:
+			decoded_chars.append(lang.index2char[decoder_input.item()])
+
+		if t == (max_target_length-1):
+			print('Failed to return EOS token.')
+
+	decoded_str = ''.join(decoded_chars[:-1])
+
+	return decoded_str
+
+def evaluateOLD(input_seq, max_length=100):
 	input_seqs = [indexes_from_compound(lang, input_seq)]
 	input_lengths = len(input_seqs)
 
@@ -247,11 +315,13 @@ def time_since(since, percent):
 	rs = es - s
 	return '%s (- %s)' % (as_minutes(s), as_minutes(rs))
 
-hidden_size = 56
+hidden_size = 128
 n_layers = 1
 dropout = 0.1
-batch_size = 10
-valid_batch_size = len(valid_pairs)
+batch_size = 100
+#valid_batch_size = len(valid_pairs)
+valid_batch_size = 100
+evaluate_batch_size = 1
 
 clip = 50.0
 teacher_forcing_ratio = 0.5
@@ -260,7 +330,8 @@ n_epochs = 10000
 epoch = 0
 plot_every = 1
 print_every = 100
-evaluate_every = 100
+valid_every = 100
+evaluate_every = 1000
 
 # initialize models
 encoder = net.EncoderRNN(vocab_size=lang.n_chars, 
@@ -311,8 +382,34 @@ while epoch < n_epochs:
 	eca += ec
 	dca += dc
 
-
 	if epoch % evaluate_every == 0:
+		with torch.no_grad():
+			delta_qed = []
+			valid = []
+			decoded_strs = []
+			for i in range(1000):
+				input_batches, input_lengths, target_batches, target_lengths = random_batch(evaluate_batch_size, valid_pairs, lang, replace=False)
+				decoded_str = evaluate(input_batches,
+								input_lengths, 
+								target_batches, 
+								target_lengths,
+								evaluate_batch_size, 
+								encoder, decoder, 
+								greedy=True)
+				decoded_str = selfies.decoder(decoded_str)
+				decoded_strs.append(decoded_str)
+				input_str = selfies.decoder(''.join(compound_from_indexes(lang, input_batches)[:-1]))
+				
+				input_qed = properties.qed(input_str)
+				decoded_qed = properties.qed(decoded_str)
+				if input_qed == 0.0 or decoded_qed == 0.0:
+					valid.append(0)
+					continue
+				delta_qed.append(decoded_qed - input_qed)
+				valid.append(1)
+			print('delta qed mean: ', np.mean(delta_qed), ' std: ', np.std(delta_qed), 'percent decoded: ', np.mean(valid))
+			embed()
+	if epoch % valid_every == 0:
 		with torch.no_grad():
 			input_batches, input_lengths, target_batches, target_lengths = random_batch(valid_batch_size, valid_pairs, lang, replace=False)
 			valid_loss = validate(input_batches,
@@ -322,14 +419,14 @@ while epoch < n_epochs:
 							valid_batch_size, 
 							encoder, decoder, 
 							teacher_forcing=True)
-			print ('valid loss: ', valid_loss)
+			
 
 	if epoch % print_every == 0:
 		with torch.no_grad():
 			print_loss_avg = print_loss_total / print_every
 			print_loss_total = 0
-			print_summary = '%s (%d %d%%) %.4f' % (time_since(start, epoch / float(n_epochs)), 
-				epoch, epoch / n_epochs * 100, print_loss_avg)
+			print_summary = '%s (%d %d%%) %.4f %.4f' % (time_since(start, epoch / float(n_epochs)), 
+				epoch, epoch / n_epochs * 100, print_loss_avg, valid_loss)
 			print(print_summary)
 	
 	# if epoch % evaluate_every == 0:
