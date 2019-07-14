@@ -1,3 +1,23 @@
+7.14
+	- implemented evalute_func using greedy sampling
+		- delta qed
+		- percent valid decoded
+	TODO:
+		- for QED task, compute percent of decoded compounds that are in the [.9, 1.0] range (conditioned on valid decoding)
+		- percent decoded successfully.
+		- implement alternative decoders
+			- sampler
+			- beam search
+		- plots for everything.
+
+7.12
+	- validation metrics (use validation data)
+		- teacher forcing at validation time to measure NLL.
+		- compute delta QED for decoded samples use this as validation metric.
+			- try a few different versions 
+				- greedy sampling 
+				- sample multiple times and average.
+
 7.11
 	- refactored seq2seq code
 	- new alphabet class ("Lang")
