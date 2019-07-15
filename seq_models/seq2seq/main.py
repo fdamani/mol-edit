@@ -11,6 +11,7 @@ import pandas as pd
 import IPython
 import numpy as np
 import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import torch.nn.utils.rnn as rnn_utils
 import selfies
@@ -23,16 +24,21 @@ import math
 import sys
 sys.path.insert(0, '../../data_analysis/')
 import properties
+import mmpa
+import os
 
 from process_data import *
 from selfies import encoder, decoder
 from torch.nn.utils import clip_grad_norm_
 from sklearn.metrics import r2_score
-from IPython import embed
+from IPython import embed, display
 from torch import optim
 from masked_cross_entropy import *
 
 # read and process data
+output_dir = '/home/fdamani/mol-edit/output/' + str(sys.argv[1])+'_'+str(time.time())
+os.mkdir(output_dir)
+os.mkdir(output_dir+'/figs')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
@@ -190,8 +196,6 @@ def validate(input_batches,
 
 def evaluate(input_batches,
 			 input_lengths,
-			 target_batches,
-			 target_lengths,
 			 batch_size,
 			 encoder,
 			 decoder,
@@ -315,22 +319,25 @@ def time_since(since, percent):
 	rs = es - s
 	return '%s (- %s)' % (as_minutes(s), as_minutes(rs))
 
-hidden_size = 128
+hidden_size = 600
 n_layers = 1
 dropout = 0.1
-batch_size = 100
+batch_size = 128
 #valid_batch_size = len(valid_pairs)
-valid_batch_size = 100
+valid_batch_size = 128
 evaluate_batch_size = 1
+num_evaluate = 1000
+similarity_thresh = .4
+qed_target = .9
 
 clip = 50.0
 teacher_forcing_ratio = 0.5
 learning_rate = 1e-3
-n_epochs = 10000
+n_epochs = 100000
 epoch = 0
-plot_every = 1
-print_every = 100
-valid_every = 100
+plot_every = 1000
+print_every = 1000
+valid_every = 1000
 evaluate_every = 1000
 
 # initialize models
@@ -353,10 +360,11 @@ decoder.to(device)
 
 # keep track of time elapsed and running averages
 start = time.time()
-plot_losses = []
+plot_train_losses = []
+plot_valid_losses = []
 print_loss_total = 0 # Reset every print_every
 plot_loss_total = 0 # Reset every plot_every
-
+percent_valid_decoded, percent_similar, percent_in_target, valid_input_qed, valid_decode_qed, percent_success = [], [], [], [], [], []
 
 ecs, dcs = [], []
 eca = 0
@@ -385,30 +393,56 @@ while epoch < n_epochs:
 	if epoch % evaluate_every == 0:
 		with torch.no_grad():
 			delta_qed = []
+			input_qed_list = []
+			decoded_qed_list = []
+			similarity = []
 			valid = []
+			input_strs = []
 			decoded_strs = []
-			for i in range(1000):
-				input_batches, input_lengths, target_batches, target_lengths = random_batch(evaluate_batch_size, valid_pairs, lang, replace=False)
+			input_diversity, decoded_diversity = [], []
+			for i in range(num_evaluate):
+				input_batches, input_lengths, target_batches, target_lengths = random_batch(evaluate_batch_size, valid_pairs.iloc[i:i+1], lang, replace=False)
 				decoded_str = evaluate(input_batches,
-								input_lengths, 
-								target_batches, 
-								target_lengths,
+								input_lengths,
 								evaluate_batch_size, 
 								encoder, decoder, 
 								greedy=True)
 				decoded_str = selfies.decoder(decoded_str)
-				decoded_strs.append(decoded_str)
 				input_str = selfies.decoder(''.join(compound_from_indexes(lang, input_batches)[:-1]))
 				
 				input_qed = properties.qed(input_str)
 				decoded_qed = properties.qed(decoded_str)
+				# if invalid (qed value = 0)
 				if input_qed == 0.0 or decoded_qed == 0.0:
 					valid.append(0)
 					continue
+				
+				input_strs.append(input_str)
+				decoded_strs.append(decoded_str)
+				decoded_qed_list.append(decoded_qed)
+				input_qed_list.append(input_qed)
 				delta_qed.append(decoded_qed - input_qed)
+				similarity.append(mmpa.similarity(input_str, decoded_str))
 				valid.append(1)
-			print('delta qed mean: ', np.mean(delta_qed), ' std: ', np.std(delta_qed), 'percent decoded: ', np.mean(valid))
-			embed()
+			# print('delta qed mean: ', np.mean(delta_qed), \
+			# 	  ' std: ', np.std(delta_qed), \
+			# 	  'percent valid decoded: ', np.mean(valid), \
+			# 	  'percent similar: ', np.mean(np.array(similarity) > similarity_thresh), \
+			# 	  'percent in target range: ', np.mean(np.array(decoded_qed_list) > qed_target))
+			
+			percent_valid_decoded.append(np.mean(valid))
+			percent_similar.append(np.mean(np.array(similarity) > similarity_thresh))
+			percent_in_target.append(np.mean(np.array(decoded_qed_list) > qed_target))
+
+			# compute 'success rate' if translation satisfies similarity constraint and property score falls in target range
+			# note this is divided by number of valid decodings, not total number of evaluations.
+			sx = np.array(similarity)[np.array(decoded_qed_list) > qed_target]
+			num_success = len(sx[sx > similarity_thresh])
+			success_rate = float(num_success) / len(similarity)
+			percent_success.append(success_rate)
+			input_diversity.append(mmpa.population_diversity(input_strs))
+			decoded_diversity.append(mmpa.population_diversity(decoded_strs))
+
 	if epoch % valid_every == 0:
 		with torch.no_grad():
 			input_batches, input_lengths, target_batches, target_lengths = random_batch(valid_batch_size, valid_pairs, lang, replace=False)
@@ -428,7 +462,64 @@ while epoch < n_epochs:
 			print_summary = '%s (%d %d%%) %.4f %.4f' % (time_since(start, epoch / float(n_epochs)), 
 				epoch, epoch / n_epochs * 100, print_loss_avg, valid_loss)
 			print(print_summary)
-	
+
+	if epoch % plot_every == 0:
+		with torch.no_grad():
+			plot_train_losses.append(print_loss_avg)
+			plot_valid_losses.append(valid_loss)
+			plt.cla()
+			plt.plot(plot_train_losses, label='train')
+			plt.plot(plot_valid_losses, label='valid')
+			plt.xlabel('Iter')
+			plt.ylabel('NLL')
+			plt.legend(loc='lower right')
+			plt.savefig(output_dir+'/figs/loss.png')
+
+			plt.cla()
+			plt.plot(percent_valid_decoded)
+			plt.xlabel('Iter')
+			plt.ylabel('Percent Valid Decoded')
+			plt.savefig(output_dir+'/figs/percent_valid_decoded.png')
+
+			plt.cla()
+			plt.plot(percent_similar)
+			plt.xlabel('Iter')
+			plt.ylabel('Percent Tanimoto Similar Above ' + str(similarity_thresh))
+			plt.savefig(output_dir+'/figs/percent_similar.png')
+
+			plt.cla()
+			plt.plot(percent_in_target)
+			plt.xlabel('Iter')
+			plt.ylabel('Percent Decoded in Target Range > ' + str(qed_target))
+			plt.savefig(output_dir+'/figs/percent_in_target.png')
+
+
+			plt.cla()
+			plt.plot(percent_success)
+			plt.xlabel('Iter')
+			plt.ylabel('Percent Success Similarity and Property Goal')
+			plt.savefig(output_dir+'/figs/percent_success.png')
+
+
+			plt.cla()
+			plt.hist(input_qed_list, label='Input')
+			plt.hist(decoded_qed_list, label='Output')
+			plt.xlabel("QED")
+			plt.legend()
+			plt.savefig(output_dir+'/figs/hist_qed.png')
+
+			plt.cla()
+			plt.hist(similarity)
+			plt.xlabel("Tanimoto Similarity")
+			plt.savefig(output_dir+'/figs/hist_tanimoto_similarity.png')
+
+			plt.cla()
+			plt.hist(input_diversity, label='Input')
+			plt.hist(decoded_diversity, label='Output')
+			plt.xlabel("Diversity")
+			plt.legend()
+			plt.savefig(output_dir+'/figs/hist_diversity.png')
+
 	# if epoch % evaluate_every == 0:
 	# 	with torch.no_grad():
 	# 		evaluate_randomly()
