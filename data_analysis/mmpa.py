@@ -28,6 +28,17 @@ def similarity(a, b):
 	fp2 = AllChem.GetMorganFingerprintAsBitVect(bmol, 2, nBits=2048, useChirality=False)
 	return DataStructs.TanimotoSimilarity(fp1, fp2)
 
+def population_diversity(x):
+	'''take a set of compounds compute pairwise diversity measures
+	diversity = 1 - sim(a,b)
+	'''
+	diversity = []
+	for i in range(len(x)):
+		for j in range(len(x)):
+			if i != j:
+				diversity.append(1.0 - similarity(x[i], x[j]))
+	return diversity
+
 if __name__ == "__main__":
 	dat = pd.read_csv('/data/potency_dataset_with_props.csv')
 	dat = dat.sample(frac=1).reset_index(drop=True)
