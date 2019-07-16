@@ -12,18 +12,19 @@ torch.manual_seed(seed)
 np.random.seed(seed)  # Numpy module.
 
 class EncoderRNN(nn.Module):
-	def __init__(self, vocab_size, hidden_size, n_layers=1, dropout=0.1):
+	def __init__(self, vocab_size, embed_size, hidden_size, n_layers=2, dropout=0.5):
 		super(EncoderRNN, self).__init__()
 		self.vocab_size = vocab_size
+		self.embed_size = embed_size
 		self.hidden_size = hidden_size
 		self.n_layers = n_layers
 		self.dropout = dropout
 
-		self.embedding = nn.Embedding(vocab_size, hidden_size)
+		self.embedding = nn.Embedding(vocab_size, self.embed_size)
 		if self.n_layers > 1:
-			self.gru = nn.GRU(hidden_size, hidden_size, n_layers, dropout=self.dropout, bidirectional=False)
+			self.gru = nn.GRU(self.embed_size, hidden_size, n_layers, dropout=self.dropout, bidirectional=False)
 		else:
-			self.gru = nn.GRU(hidden_size, hidden_size, n_layers)
+			self.gru = nn.GRU(self.embed_size, hidden_size, n_layers)
 	def forward(self, input_seqs, input_lengths):
 		embedded = self.embedding(input_seqs)
 		b_size = input_seqs.size(1)
@@ -38,19 +39,20 @@ class EncoderRNN(nn.Module):
 
 
 class DecoderRNN(nn.Module):
-	def __init__(self, vocab_size, hidden_size, n_layers=1, dropout=.1):
+	def __init__(self, vocab_size, embed_size, hidden_size, n_layers=2, dropout=.5):
 		super(DecoderRNN, self).__init__()
 		self.vocab_size = vocab_size
+		self.embed_size = embed_size
 		self.hidden_size = hidden_size
 		self.n_layers = n_layers
 		self.dropout = dropout
 
-		self.embedding = nn.Embedding(vocab_size, hidden_size)
+		self.embedding = nn.Embedding(self.vocab_size, self.embed_size)
 
 		if self.n_layers > 1:
-			self.gru = nn.GRU(self.hidden_size, self.hidden_size, self.n_layers, dropout=dropout)
+			self.gru = nn.GRU(self.embed_size, self.hidden_size, self.n_layers, dropout=dropout)
 		else:
-			self.gru = nn.GRU(self.hidden_size, self.hidden_size, self.n_layers)
+			self.gru = nn.GRU(self.embed_size, self.hidden_size, self.n_layers)
 
 		self.concat = nn.Linear(self.hidden_size * 2, self.hidden_size)
 		self.out = nn.Linear(self.hidden_size, self.vocab_size)
@@ -61,7 +63,7 @@ class DecoderRNN(nn.Module):
 		'''run one step at a time'''
 		b_size = input_seq.size(0)
 		embedded = self.embedding(input_seq)
-		embedded = embedded.view(1, b_size, self.hidden_size)
+		embedded = embedded.view(1, b_size, self.embed_size)
 
 		output, hidden = self.gru(embedded, last_hidden)
 		output = self.out(output)

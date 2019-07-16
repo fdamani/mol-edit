@@ -127,9 +127,9 @@ def train(input_batches,
 	max_target_length = max(target_lengths)
 	all_decoder_outputs = torch.zeros(max_target_length, batch_size, decoder.vocab_size)
 
-   
-	decoder_input = decoder_input.cuda()
-	all_decoder_outputs = all_decoder_outputs.cuda()
+	if torch.cuda.is_available():
+		decoder_input = decoder_input.cuda()
+		all_decoder_outputs = all_decoder_outputs.cuda()
 
 	# Run through decoder one time step at a time
 	for t in range(max_target_length):
@@ -173,9 +173,10 @@ def validate(input_batches,
 
 	max_target_length = max(target_lengths)
 	all_decoder_outputs = torch.zeros(max_target_length, batch_size, decoder.vocab_size)
-   
-	decoder_input = decoder_input.cuda()
-	all_decoder_outputs = all_decoder_outputs.cuda()
+
+	if torch.cuda.is_available():
+		decoder_input = decoder_input.cuda()
+		all_decoder_outputs = all_decoder_outputs.cuda()
 
 	# Run through decoder one time step at a time
 	for t in range(max_target_length):
@@ -199,7 +200,11 @@ def evaluate(input_batches,
 			 batch_size,
 			 encoder,
 			 decoder,
-			 greedy=True):
+			 search='greedy'):
+	''' 
+		:param search: decoding search strategies
+			{"greedy", "beam"} 
+	'''
 	loss = 0
 	# Run words through encoder
 	encoder_outputs, encoder_hidden = encoder(input_batches, input_lengths)
@@ -211,9 +216,10 @@ def evaluate(input_batches,
 
 	max_target_length = 100
 	all_decoder_outputs = torch.zeros(max_target_length, batch_size, decoder.vocab_size)
-   
-	decoder_input = decoder_input.cuda()
-	all_decoder_outputs = all_decoder_outputs.cuda()
+
+	if torch.cuda.is_available():
+		decoder_input = decoder_input.cuda()
+		all_decoder_outputs = all_decoder_outputs.cuda()
 
 	decoded_chars = []
 
@@ -223,14 +229,18 @@ def evaluate(input_batches,
 			decoder_input, decoder_hidden)
 		output = functional.log_softmax(decoder_output, dim=-1)
 		# max
-		if greedy:
+		if search == 'greedy':
 			topv, topi = output.data.topk(1)
 			decoder_input = topi.view(1)
-		# sample
 		else:
-			m = torch.distributions.Multinomial(logits=output)
-			samp = m.sample()
-			decoder_input = samp.squeeze().nonzero().view(1)
+			print("ERROR: please specify greedy or beam.")
+			sys.exit(0)
+		
+		# # sample
+		# else:
+		# 	m = torch.distributions.Multinomial(logits=output)
+		# 	samp = m.sample()
+		# 	decoder_input = samp.squeeze().nonzero().view(1)
 		
 		if decoder_input.item() == lang.EOS_token:
 			decoded_chars.append('EOS')
@@ -245,67 +255,156 @@ def evaluate(input_batches,
 
 	return decoded_str
 
-def evaluateOLD(input_seq, max_length=100):
-	input_seqs = [indexes_from_compound(lang, input_seq)]
-	input_lengths = len(input_seqs)
-
-	#input_lengths = [len(input_seq)]
-	#input_seqs = [indexes_from_compound(lang, input_seq)]
-	embed()
-	input_batches = torch.LongTensor(input_seqs).transpose(0, 1)
-	
-	input_batches = input_batches.cuda()
-		
-	# Set to not-training mode to disable dropout
-	encoder.train(False)
-	decoder.train(False)
-	
-	# Run through encoder
+def evaluate_beam(input_batches,
+			 input_lengths,
+			 batch_size,
+			 encoder,
+			 decoder,
+			 search='beam',
+			 num_beams=20):
+	''' 
+		:param search: decoding search strategies
+			{"greedy", "beam"} 
+	'''
+	loss = 0
+	# Run words through encoder
 	encoder_outputs, encoder_hidden = encoder(input_batches, input_lengths)
-
-	# Create starting vectors for decoder
-	decoder_input = torch.LongTensor([lang.SOS_token]) # SOS
+	
+	# Prepare input and output variables
+	decoder_input = torch.LongTensor([lang.SOS_token] * batch_size)
 	decoder_hidden = encoder_hidden[:decoder.n_layers] # Use last (forward) hidden state from encoder
-	
 
-	decoder_input = decoder_input.cuda()
 
-	# Store output words and attention states
-	decoded_chars = []
-	
-	# Run through decoder
-	for di in range(max_length):
-		decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
+	max_target_length = 100
+	all_decoder_outputs = torch.zeros(max_target_length, batch_size, decoder.vocab_size)
 
-		# Choose top word from output
-		topv, topi = decoder_output.data.topk(1)
-		ni = topi[0][0]
-		if ni == lang.EOS_token:
-			decoded_chars.append('<EOS>')
-			break
-		else:
-			decoded_chars.append(output_lang.index2char[ni])
-			
-		# Next input is chosen word
-		decoder_input = torch.LongTensor([ni])
+	if torch.cuda.is_available():
 		decoder_input = decoder_input.cuda()
+		all_decoder_outputs = all_decoder_outputs.cuda()
 
-	# Set back to training mode
-	encoder.train(True)
-	decoder.train(True)
+	decoded_chars = []
+	beam_char_inds = torch.zeros(num_beams, max_target_length, dtype=torch.long, device=device)
+	beam_log_probs = torch.zeros(num_beams, max_target_length, device=device)
+	beam_hiddens = torch.zeros(num_beams, decoder_hidden.shape[0], decoder_hidden.shape[1], \
+							decoder_hidden.shape[2], device=device)
+	final_beams = []
+	beam_probs = []
+
+	decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
 	
+	for i in range(num_beams):
+		beam_hiddens[i] = decoder_hidden
+	
+	log_probs = functional.log_softmax(decoder_output, dim=-1)
+	topv, topi = log_probs.data.topk(num_beams)
+	beam_char_inds[:, 0] = topi.squeeze()
+	beam_log_probs[:, 0] = topv.squeeze()
+
+	# Run through decoder one time step at a time
+	for t in range(1, max_target_length):
+		# if all beams have ended break
+		if num_beams == 0: break
+		
+		beam_cand_log_probs = []
+		beam_cand_inds = []
+		
+		for i in range(num_beams):
+			decoder_input = beam_char_inds[i, t-1].unsqueeze(dim=0)
+			# check if decoder input is ever lang.EOS_token. if it is there is a bug!
+			decoder_hidden = beam_hiddens[i]
+			decoder_output, beam_hiddens[i] = decoder(decoder_input, decoder_hidden)
+			log_probs = functional.log_softmax(decoder_output, dim=-1)
+			log_probs += beam_log_probs[i, t-1]
+			topv, topi = log_probs.data.topk(num_beams)
+			beam_cand_log_probs.append(topv.squeeze())
+			beam_cand_inds.append(topi.squeeze())
+		
+		# if greater than one beam -> concatenate
+		if num_beams > 1:
+			beam_cand_log_probs = torch.cat(beam_cand_log_probs)
+			beam_cand_inds = torch.cat(beam_cand_inds)
+		else:
+			beam_cand_log_probs = torch.stack(beam_cand_log_probs)
+			beam_cand_inds = torch.stack(beam_cand_inds)
+
+		# pick topk
+		a,b = beam_cand_log_probs.topk(num_beams)
+		
+		for i in range(num_beams):
+			what_beam = b[i] / num_beams
+			char_ind = beam_cand_inds[b[i]]
+			log_prob = beam_cand_log_probs[b[i]]
+			
+			# copying over particles
+			beam_char_inds[i] = beam_char_inds[what_beam]
+			beam_char_inds[i, t] = char_ind
+			
+			beam_log_probs[i] = beam_log_probs[what_beam]
+			beam_log_probs[i, t] = log_prob
+
+			beam_hiddens[i] = beam_hiddens[what_beam]
+
+
+		# save trajectories that have ended
+		ax = beam_char_inds[beam_char_inds[:,t]==lang.EOS_token]
+		if ax.shape[0] != 0:
+			final_beams.append(ax)
+		
+		# keep trajectories that have not ended
+		ax = beam_char_inds[beam_char_inds[:,t]!=lang.EOS_token]
+		if ax.shape[0] != 0:
+			inds = beam_char_inds[:,t]!=lang.EOS_token
+			beam_char_inds = beam_char_inds[inds]
+			beam_log_probs = beam_log_probs[inds]
+			beam_hiddens = beam_hiddens[inds]
+		# no trajectories left
+		else:
+			num_beams = 0
+			break
+		num_beams = beam_char_inds.shape[0]
+		print num_beams
+	
+
+	### NEED TO DEBUG BELOW.
+	# append beams that have reached max length
+	if num_beams > 0:
+		final_beams.append(beam_char_inds)
+	
+	# decode beams
+	decoded_chars = []
+	for beam_set in final_beams:
+		for beam in beam_set:
+			decoded_chars.append(''.join([lang.index2char[beam[i].item()] for i in range(len(beam))][:-1]))
+
 	return decoded_chars
 
-def evaluate_randomly():
-	num_samples = pairs.shape[0]
-	rand_ind = np.random.choice(num_samples)
-	rand_pair = pairs.iloc[rand_ind]
-	input_seq, target_seq = rand_pair[0], rand_pair[1]
-	embed()
-	output_seq = evaluate(input_seq)
-	print('>', input_seq)
-	print('=', target_seq)
-	print('<', output_seq)
+
+	# 	# max
+	# 	if search == 'greedy':
+	# 		topv, topi = output.data.topk(1)
+	# 		decoder_input = topi.view(1)
+	# 	else:
+	# 		print("ERROR: please specify greedy or beam.")
+	# 		sys.exit(0)
+		
+	# 	# # sample
+	# 	# else:
+	# 	# 	m = torch.distributions.Multinomial(logits=output)
+	# 	# 	samp = m.sample()
+	# 	# 	decoder_input = samp.squeeze().nonzero().view(1)
+		
+	# 	if decoder_input.item() == lang.EOS_token:
+	# 		decoded_chars.append('EOS')
+	# 		break
+	# 	else:
+	# 		decoded_chars.append(lang.index2char[decoder_input.item()])
+
+	# 	if t == (max_target_length-1):
+	# 		print('Failed to return EOS token.')
+
+	# decoded_str = ''.join(decoded_chars[:-1])
+
+	return decoded_str
 
 def as_minutes(s):
 	m = math.floor(s / 60)
@@ -319,12 +418,14 @@ def time_since(since, percent):
 	rs = es - s
 	return '%s (- %s)' % (as_minutes(s), as_minutes(rs))
 
-hidden_size = 600
+
+embed_size = 500
+hidden_size = 1000
 n_layers = 1
 dropout = 0.1
-batch_size = 128
+batch_size = 256
 #valid_batch_size = len(valid_pairs)
-valid_batch_size = 128
+valid_batch_size = 256
 evaluate_batch_size = 1
 num_evaluate = 1000
 similarity_thresh = .4
@@ -338,17 +439,19 @@ epoch = 0
 plot_every = 1000
 print_every = 1000
 valid_every = 1000
-evaluate_every = 1000
+evaluate_every = 10
 
 # initialize models
 encoder = net.EncoderRNN(vocab_size=lang.n_chars, 
-					 hidden_size=hidden_size, 
-					 n_layers=n_layers,
-					 dropout=dropout)
+						 embed_size=embed_size,
+						 hidden_size=hidden_size, 
+						 n_layers=n_layers,
+						 dropout=dropout)
 decoder = net.DecoderRNN(vocab_size=lang.n_chars,
-					 hidden_size=hidden_size,
-					 n_layers=n_layers,
-					 dropout=dropout)
+						 embed_size=embed_size,
+						 hidden_size=hidden_size,
+						 n_layers=n_layers,
+						 dropout=dropout)
 
 # initialize optimizers and criterion
 encoder_opt = optim.Adam(encoder.parameters(), lr=learning_rate)
@@ -371,6 +474,7 @@ eca = 0
 dca = 0
 
 while epoch < n_epochs:
+	print(epoch)
 	epoch += 1
 
 	# get random batch
@@ -400,13 +504,21 @@ while epoch < n_epochs:
 			input_strs = []
 			decoded_strs = []
 			input_diversity, decoded_diversity = [], []
+			# evaluate samples one-by-one
 			for i in range(num_evaluate):
 				input_batches, input_lengths, target_batches, target_lengths = random_batch(evaluate_batch_size, valid_pairs.iloc[i:i+1], lang, replace=False)
-				decoded_str = evaluate(input_batches,
+				
+				decoded_str = evaluate_beam(input_batches,
 								input_lengths,
 								evaluate_batch_size, 
-								encoder, decoder, 
-								greedy=True)
+								encoder,
+								decoder)
+				# decoded_str = evaluate(input_batches,
+				# 				input_lengths,
+				# 				evaluate_batch_size, 
+				# 				encoder,
+				# 				decoder, 
+				# 				search='greedy')
 				decoded_str = selfies.decoder(decoded_str)
 				input_str = selfies.decoder(''.join(compound_from_indexes(lang, input_batches)[:-1]))
 				
@@ -519,18 +631,3 @@ while epoch < n_epochs:
 			plt.xlabel("Diversity")
 			plt.legend()
 			plt.savefig(output_dir+'/figs/hist_diversity.png')
-
-	# if epoch % evaluate_every == 0:
-	# 	with torch.no_grad():
-	# 		evaluate_randomly()
-
-	# if epoch % plot_every == 0:
-	# 	plot_loss_avg = plot_loss_total / plot_every
-	# 	plot_losses.append(plot_loss_avg)
-	# 	plot_loss_total = 0
-	# 	plt.cla()
-	# 	plt.plot(plot_losses)
-	# 	plt.savefig('training_loss.png')
-
-
-
