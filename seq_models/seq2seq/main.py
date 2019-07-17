@@ -39,6 +39,7 @@ from masked_cross_entropy import *
 output_dir = '/home/fdamani/mol-edit/output/' + str(sys.argv[1])+'_'+str(time.time())
 os.mkdir(output_dir)
 os.mkdir(output_dir+'/figs')
+os.mkdir(output_dir+'/saved_model')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
@@ -364,18 +365,23 @@ def evaluate_beam(input_batches,
 		num_beams = beam_char_inds.shape[0]
 		print num_beams
 	
+	embed()
 
 	### NEED TO DEBUG BELOW.
 	# append beams that have reached max length
 	if num_beams > 0:
 		final_beams.append(beam_char_inds)
 	
+	embed()
+
 	# decode beams
 	decoded_chars = []
 	for beam_set in final_beams:
 		for beam in beam_set:
 			decoded_chars.append(''.join([lang.index2char[beam[i].item()] for i in range(len(beam))][:-1]))
 
+
+	embed()
 	return decoded_chars
 
 
@@ -421,11 +427,11 @@ def time_since(since, percent):
 
 embed_size = 500
 hidden_size = 1000
-n_layers = 1
-dropout = 0.1
-batch_size = 256
+n_layers = 2
+dropout = 0.5
+batch_size = 128
 #valid_batch_size = len(valid_pairs)
-valid_batch_size = 256
+valid_batch_size = 128
 evaluate_batch_size = 1
 num_evaluate = 1000
 similarity_thresh = .4
@@ -433,13 +439,14 @@ qed_target = .9
 
 clip = 50.0
 teacher_forcing_ratio = 0.5
-learning_rate = 1e-3
-n_epochs = 100000
+learning_rate = 1e-4
+n_epochs = 500000
 epoch = 0
-plot_every = 1000
-print_every = 1000
-valid_every = 1000
-evaluate_every = 10
+plot_every = 2000
+print_every = 2000
+valid_every = 2000
+evaluate_every = 2000
+save_every = 2000
 
 # initialize models
 encoder = net.EncoderRNN(vocab_size=lang.n_chars, 
@@ -474,9 +481,7 @@ eca = 0
 dca = 0
 
 while epoch < n_epochs:
-	print(epoch)
-	epoch += 1
-
+	epoch +=1
 	# get random batch
 	input_batches, input_lengths, target_batches, target_lengths = random_batch(batch_size, pairs, lang)
 	# run train func
@@ -508,20 +513,22 @@ while epoch < n_epochs:
 			for i in range(num_evaluate):
 				input_batches, input_lengths, target_batches, target_lengths = random_batch(evaluate_batch_size, valid_pairs.iloc[i:i+1], lang, replace=False)
 				
-				decoded_str = evaluate_beam(input_batches,
-								input_lengths,
-								evaluate_batch_size, 
-								encoder,
-								decoder)
-				# decoded_str = evaluate(input_batches,
+				# decoded_str = evaluate_beam(input_batches,
 				# 				input_lengths,
 				# 				evaluate_batch_size, 
 				# 				encoder,
-				# 				decoder, 
-				# 				search='greedy')
+				# 				decoder)
+				decoded_str = evaluate(input_batches,
+								input_lengths,
+								evaluate_batch_size, 
+								encoder,
+								decoder, 
+								search='greedy')
 				decoded_str = selfies.decoder(decoded_str)
+				# invalid string
+				if decoded_str == -1:
+					continue
 				input_str = selfies.decoder(''.join(compound_from_indexes(lang, input_batches)[:-1]))
-				
 				input_qed = properties.qed(input_str)
 				decoded_qed = properties.qed(decoded_str)
 				# if invalid (qed value = 0)
@@ -550,7 +557,10 @@ while epoch < n_epochs:
 			# note this is divided by number of valid decodings, not total number of evaluations.
 			sx = np.array(similarity)[np.array(decoded_qed_list) > qed_target]
 			num_success = len(sx[sx > similarity_thresh])
-			success_rate = float(num_success) / len(similarity)
+			if len(similarity) == 0:
+				success_rate = 0
+			else:
+				success_rate = float(num_success) / len(similarity)
 			percent_success.append(success_rate)
 			input_diversity.append(mmpa.population_diversity(input_strs))
 			decoded_diversity.append(mmpa.population_diversity(decoded_strs))
@@ -572,7 +582,7 @@ while epoch < n_epochs:
 			print_loss_avg = print_loss_total / print_every
 			print_loss_total = 0
 			print_summary = '%s (%d %d%%) %.4f %.4f' % (time_since(start, epoch / float(n_epochs)), 
-				epoch, epoch / n_epochs * 100, print_loss_avg, valid_loss)
+				epoch, float(epoch) / n_epochs * 100, print_loss_avg, valid_loss)
 			print(print_summary)
 
 	if epoch % plot_every == 0:
@@ -631,3 +641,9 @@ while epoch < n_epochs:
 			plt.xlabel("Diversity")
 			plt.legend()
 			plt.savefig(output_dir+'/figs/hist_diversity.png')
+
+	if epoch % save_every == 0:
+		with torch.no_grad():
+			# save model
+			torch.save(encoder.state_dict(), output_dir+'/saved_model/encoder_'+str(epoch)+'.pth')
+			torch.save(decoder.state_dict(), output_dir+'/saved_model/decoder_'+str(epoch)+'.pth')
