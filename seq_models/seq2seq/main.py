@@ -61,6 +61,15 @@ else:
 pairs = pd.DataFrame([X_train, Y_train]).T
 valid_pairs = pd.DataFrame([X_valid, Y_valid]).T
 
+# sim = []
+# for i in range(pairs.shape[0]):
+# 	sim.append(mmpa.similarity(decoder(pairs.iloc[i, 0]), decoder(pairs.iloc[i, 1])))
+# plt.cla()
+# plt.hist(sim)
+# plt.ylabel('Count')
+# plt.xlabel('Similarity')
+# plt.savefig('/home/fdamani/mol-edit/data/qed/training_sim_hist.png')
+# embed()
 # test data
 #f = '/home/fdamani/mol-edit/data/qed/valid.txt'
 #test_seqs, lengths = read_single_data(f, lang, selfies=True)
@@ -134,8 +143,7 @@ def train(input_batches,
 
 	# Run through decoder one time step at a time
 	for t in range(max_target_length):
-		decoder_output, decoder_hidden = decoder(
-			decoder_input, decoder_hidden)
+		decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden, encoder_outputs)
 
 		all_decoder_outputs[t] = decoder_output
 		decoder_input = target_batches[t] # Next input is current target
@@ -145,6 +153,7 @@ def train(input_batches,
 		all_decoder_outputs.transpose(0, 1).contiguous(), # -> batch x seq
 		target_batches.transpose(0, 1).contiguous(), # -> batch x seq
 		target_lengths)
+	
 	loss.backward()
 	
 	# Clip gradient norms
@@ -154,6 +163,7 @@ def train(input_batches,
 	# Update parameters with optimizers
 	encoder_optimizer.step()
 	decoder_optimizer.step()
+
 	return loss.item(), ec, dc
 
 def validate(input_batches,
@@ -182,7 +192,7 @@ def validate(input_batches,
 	# Run through decoder one time step at a time
 	for t in range(max_target_length):
 		decoder_output, decoder_hidden = decoder(
-			decoder_input, decoder_hidden)
+			decoder_input, decoder_hidden, encoder_outputs)
 
 		all_decoder_outputs[t] = decoder_output
 		if teacher_forcing:
@@ -227,7 +237,7 @@ def evaluate(input_batches,
 	# Run through decoder one time step at a time
 	for t in range(max_target_length):
 		decoder_output, decoder_hidden = decoder(
-			decoder_input, decoder_hidden)
+			decoder_input, decoder_hidden, encoder_outputs)
 		output = functional.log_softmax(decoder_output, dim=-1)
 		# max
 		if search == 'greedy':
@@ -249,8 +259,8 @@ def evaluate(input_batches,
 		else:
 			decoded_chars.append(lang.index2char[decoder_input.item()])
 
-		if t == (max_target_length-1):
-			print('Failed to return EOS token.')
+		# if t == (max_target_length-1):
+		# 	print('Failed to return EOS token.')
 
 	decoded_str = ''.join(decoded_chars[:-1])
 
@@ -424,14 +434,13 @@ def time_since(since, percent):
 	rs = es - s
 	return '%s (- %s)' % (as_minutes(s), as_minutes(rs))
 
-
-embed_size = 500
-hidden_size = 1000
-n_layers = 2
+embed_size = 50
+hidden_size = 50
+n_layers = 1
 dropout = 0.5
-batch_size = 128
+batch_size = 50
 #valid_batch_size = len(valid_pairs)
-valid_batch_size = 128
+valid_batch_size = 50
 evaluate_batch_size = 1
 num_evaluate = 1000
 similarity_thresh = .4
@@ -439,26 +448,32 @@ qed_target = .9
 
 clip = 50.0
 teacher_forcing_ratio = 0.5
-learning_rate = 1e-4
+learning_rate = 1e-3
 n_epochs = 500000
 epoch = 0
-plot_every = 2000
-print_every = 2000
-valid_every = 2000
-evaluate_every = 2000
-save_every = 2000
-
+plot_every = 100 # 2000
+print_every = 100 #2000
+valid_every = 100 #2000
+evaluate_every = 100 #2000
+save_every = 250
+attn = True
 # initialize models
 encoder = net.EncoderRNN(vocab_size=lang.n_chars, 
 						 embed_size=embed_size,
 						 hidden_size=hidden_size, 
 						 n_layers=n_layers,
 						 dropout=dropout)
-decoder = net.DecoderRNN(vocab_size=lang.n_chars,
-						 embed_size=embed_size,
-						 hidden_size=hidden_size,
-						 n_layers=n_layers,
-						 dropout=dropout)
+if attn:
+	attention = net.Attn(method_str='general', hidden_size=hidden_size)
+	decoder = net.LuongAttnDecoderRNN(attn_model=attention, 
+								      hidden_size=hidden_size, 
+								      vocab_size=lang.n_chars)
+else:
+	decoder = net.DecoderRNN(vocab_size=lang.n_chars,
+							 embed_size=embed_size,
+							 hidden_size=hidden_size,
+							 n_layers=n_layers,
+							 dropout=dropout)
 
 # initialize optimizers and criterion
 encoder_opt = optim.Adam(encoder.parameters(), lr=learning_rate)
