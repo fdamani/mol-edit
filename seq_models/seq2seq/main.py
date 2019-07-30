@@ -18,6 +18,7 @@ import selfies
 import process_data
 import Lang
 import masked_cross_entropy
+import utils
 import random
 import time
 import math
@@ -34,6 +35,7 @@ from sklearn.metrics import r2_score
 from IPython import embed, display
 from torch import optim
 from masked_cross_entropy import *
+from utils import similarity
 
 # read and process data
 output_dir = '/home/fdamani/mol-edit/output/' + \
