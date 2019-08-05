@@ -22,6 +22,7 @@ sys.path.insert(0, '../../data_analysis/')
 import properties
 import mmpa
 import os
+import rdkit
 
 from process_data import *
 from selfies import encoder, decoder
@@ -30,121 +31,170 @@ from sklearn.metrics import r2_score
 from IPython import embed, display
 from torch import optim
 from masked_cross_entropy import *
+from rdkit import Chem
 
 
 def rl_train(input_batches,
-          input_lengths,
-          target_batches,
-          target_lengths,
-          batch_size,
-          encoder,
-          decoder,
-          encoder_optimizer,
-          decoder_optimizer,
-          reward_func):
+		  input_lengths,
+		  target_batches,
+		  target_lengths,
+		  batch_size,
+		  encoder,
+		  decoder,
+		  encoder_optimizer,
+		  decoder_optimizer,
+		  reward_func,
+		  lang):
 	'''
 		train a seq2seq model to minimize negative expected reward
 		using policy gradient training.
+		note: only works for batch of size 1.
 	'''
+	clip=50.0
+	input_smiles = []
+	for i in range(input_batches.shape[0]):
+		input_smiles.append(lang.index2char[input_batches[i].item()])
+	input_smiles = selfies.decoder(''.join(input_smiles[:-1]))
 
-    # Zero gradients of both optimizers
-    encoder_optimizer.zero_grad()
-    decoder_optimizer.zero_grad()
-    loss = 0
+	# Zero gradients of both optimizers
+	encoder_optimizer.zero_grad()
+	decoder_optimizer.zero_grad()
+	loss = 0
 
-    # Run words through encoder
-    encoder_outputs, encoder_hidden = encoder(input_batches, input_lengths)
+	# Run words through encoder
+	encoder_outputs, encoder_hidden = encoder(input_batches, input_lengths)
 
-    # Prepare input and output variables
-    decoder_input = torch.LongTensor([lang.SOS_token] * batch_size)
-    # Use last (forward) hidden state from encoder
-    decoder_hidden = encoder_hidden[:decoder.n_layers]
+	max_target_length = max(target_lengths)
 
-    max_target_length = max(target_lengths)
-    all_decoder_outputs = torch.zeros(
-        max_target_length, batch_size, decoder.vocab_size)
+	############## greedy decoding ##############
+	with torch.no_grad():
+		# Prepare input and output variables
+		decoder_input = torch.LongTensor([lang.SOS_token] * batch_size)
+		# Use last (forward) hidden state from encoder
+		decoder_hidden = encoder_hidden[:decoder.n_layers]
 
-    if torch.cuda.is_available():
-        decoder_input = decoder_input.cuda()
-        all_decoder_outputs = all_decoder_outputs.cuda()
+		all_decoder_outputs = torch.zeros(
+			max_target_length, batch_size, decoder.vocab_size)
 
-    # need two separate output sequences
-    ############## greedy decoding ##############
-    greedy_decoded_chars = []
-    for t in range(max_target_length):
-        decoder_output, decoder_hidden = decoder(
-            decoder_input, decoder_hidden, encoder_outputs)
-        output = functional.log_softmax(decoder_output, dim=-1)
-        topv, topi = output.data.topk(1)
-        decoder_input = topi.view(1)
-        if decoder_input.item() == lang.EOS_token:
-        	greedy_decoded_chars.append('EOS')
-        else:
-        	greedy_decoded_chars.append(lang.index2char[decoder_input.item()])
+		if torch.cuda.is_available():
+			decoder_input = decoder_input.cuda()
+			all_decoder_outputs = all_decoder_outputs.cuda()
 
-
-        all_decoder_outputs[t] = decoder_output
-        decoder_input = target_batches[t]  # Next input is current target
-
-    ############## sample decoding ##############
-    sampled_decoded_chars = []
-    
-    # Prepare input and output variables
-    decoder_input = torch.LongTensor([lang.SOS_token] * batch_size)
-    # Use last (forward) hidden state from encoder
-    decoder_hidden = encoder_hidden[:decoder.n_layers]
-    all_decoder_outputs = torch.zeros(
-        max_target_length, batch_size, decoder.vocab_size)
-    
-    if torch.cuda.is_available():
-        decoder_input = decoder_input.cuda()
-        all_decoder_outputs = all_decoder_outputs.cuda()
-    
-    for t in range(max_target_length):
-    	decoder_output, decoder_hidden = decoder(
-            decoder_input, decoder_hidden, encoder_outputs)
-    	output = functional.log_softmax(decoder_output, dim=-1)
-    	m = torch.distributions.Multinomial(logits=output)
-    	samp = m.sample()
-    	decoder_input = sampl.squeeze().nonzero().view(1)
-        
-        if decoder_input.item() == lang.EOS_token:
-        	sampled_decoded_chars.append('EOS')
-        else:
-        	sampled_decoded_chars.append(lang.index2char[decoder_input.item()])
+		# no gradient here
+		greedy_decoded_chars = []
+		for t in range(max_target_length):
+			decoder_output, decoder_hidden = decoder(
+				decoder_input, decoder_hidden, encoder_outputs)
+			output = functional.log_softmax(decoder_output, dim=-1)
+			topv, topi = output.data.topk(1)
+			decoder_input = topi.view(1)
+			if decoder_input.item() == lang.EOS_token:
+				greedy_decoded_chars.append('EOS')
+				break
+			else:
+				greedy_decoded_chars.append(lang.index2char[decoder_input.item()])
 
 
-    embed()
+			all_decoder_outputs[t] = decoder_output
+			decoder_input = target_batches[t]  # Next input is current target
+		greedy_smiles = selfies.decoder(''.join(greedy_decoded_chars[:-1]))
+		if greedy_smiles == -1:
+			return 0.0, 0.0, 0.0
+		if Chem.MolFromSmiles(greedy_smiles) is None:
+			return 0.0, 0.0, 0.0
+	############## sample decoding ##############
+	# this needs to be fixed
+	# we only want to retain the computation graph for the decoded input we use
+	# otherwise might max out on memory
+
+	sampled_decoded_chars = []
+	sampled_decoded_indices = []
+	logits = []
+	
+	# Prepare input and output variables
+	decoder_input = torch.LongTensor([lang.SOS_token] * batch_size)
+	# Use last (forward) hidden state from encoder
+	decoder_hidden = encoder_hidden[:decoder.n_layers]
+	all_decoder_outputs = torch.zeros(
+		max_target_length, batch_size, decoder.vocab_size)
+	
+	if torch.cuda.is_available():
+		decoder_input = decoder_input.cuda()
+		all_decoder_outputs = all_decoder_outputs.cuda()
+
+	for t in range(max_target_length):
+		decoder_output, decoder_hidden = decoder(
+			decoder_input, decoder_hidden, encoder_outputs)
+		output = functional.log_softmax(decoder_output, dim=-1)
+		logits.append(output)
+		m = torch.distributions.Multinomial(logits=output)
+		samp = m.sample()
+		decoder_input = samp.squeeze().nonzero().view(1)
+		sampled_decoded_indices.append(decoder_input)
+		
+		if decoder_input.item() == lang.EOS_token:
+			sampled_decoded_chars.append('EOS')
+			break
+		else:
+			sampled_decoded_chars.append(lang.index2char[decoder_input.item()])
+
+	sampled_smiles = selfies.decoder(''.join(sampled_decoded_chars[:-1]))
+	if sampled_smiles == -1:
+		return 0.0, 0.0, 0.0
+	if Chem.MolFromSmiles(sampled_smiles) is None:
+		return 0.0, 0.0, 0.0
+
+	############## reward ##############
+	sampled_rw = reward_func(input_smiles, sampled_smiles)
+	baseline_rw = reward_func(input_smiles, greedy_smiles)
+
+	############## compute loss #########
+	# compute log p(y^s|x)
+	loss = 0
+	criterion = nn.CrossEntropyLoss()
+	sampled_decoded_indices = torch.stack(sampled_decoded_indices)
+	logits = torch.stack(logits)
+	for i in range(sampled_decoded_indices.shape[0]):
+		loss += criterion(logits[i].squeeze(dim=0), sampled_decoded_indices[i])
+
+	loss = loss * (sampled_rw - baseline_rw)
+	print('delta: ', (sampled_rw - baseline_rw))
+	loss.backward()
+	ec = torch.nn.utils.clip_grad_norm(encoder.parameters(), clip)
+	dc = torch.nn.utils.clip_grad_norm(decoder.parameters(), clip)
+
+	encoder_optimizer.step()
+	decoder_optimizer.step()
+	return loss.item(), ec, dc
+
+	# # sample a sequence s^ from the decoder.
+	# # compute grad log p
+	# # evaluate reward_func(s^)
 
 
-    # sample a sequence s^ from the decoder.
-    # compute grad log p
-    # evaluate reward_func(s^)
 
+	# # Run through decoder one time step at a time
+	# for t in range(max_target_length):
+	#   decoder_output, decoder_hidden = decoder(
+	#       decoder_input, decoder_hidden, encoder_outputs)
 
+	#   all_decoder_outputs[t] = decoder_output
+	#   decoder_input = target_batches[t]  # Next input is current target
 
-    # Run through decoder one time step at a time
-    for t in range(max_target_length):
-        decoder_output, decoder_hidden = decoder(
-            decoder_input, decoder_hidden, encoder_outputs)
+	# # Loss calculation and backpropagation
+	# loss = masked_cross_entropy(
+	#   all_decoder_outputs.transpose(0, 1).contiguous(),  # -> batch x seq
+	#   target_batches.transpose(0, 1).contiguous(),  # -> batch x seq
+	#   target_lengths)
 
-        all_decoder_outputs[t] = decoder_output
-        decoder_input = target_batches[t]  # Next input is current target
+	# loss.backward()
 
-    # Loss calculation and backpropagation
-    loss = masked_cross_entropy(
-        all_decoder_outputs.transpose(0, 1).contiguous(),  # -> batch x seq
-        target_batches.transpose(0, 1).contiguous(),  # -> batch x seq
-        target_lengths)
+	# # Clip gradient norms
+	# ec = torch.nn.utils.clip_grad_norm(encoder.parameters(), clip)
+	# dc = torch.nn.utils.clip_grad_norm(decoder.parameters(), clip)
 
-    loss.backward()
+	# # Update parameters with optimizers
+	# encoder_optimizer.step()
+	# decoder_optimizer.step()
 
-    # Clip gradient norms
-    ec = torch.nn.utils.clip_grad_norm(encoder.parameters(), clip)
-    dc = torch.nn.utils.clip_grad_norm(decoder.parameters(), clip)
-
-    # Update parameters with optimizers
-    encoder_optimizer.step()
-    decoder_optimizer.step()
-
-    return loss.item(), ec, dc
+	# return loss.item(), ec, dc
