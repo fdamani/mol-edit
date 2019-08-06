@@ -37,7 +37,7 @@ from IPython import embed, display
 from torch import optim
 from masked_cross_entropy import *
 from utils import similarity
-from rl_training import rl_train
+from rl_training import rl_train_outer_loop
 
 # read and process data
 #output_dir_str = '/home/fdamani/mol-edit/output/'
@@ -302,7 +302,7 @@ embed_size = 128
 hidden_size = 256
 n_layers = 1
 dropout = 0.5
-batch_size = 1 #128
+batch_size = 256 #128
 #valid_batch_size = len(valid_pairs)
 valid_batch_size = 128
 evaluate_batch_size = 1
@@ -315,10 +315,10 @@ teacher_forcing_ratio = 0.5
 learning_rate = 1e-3
 n_epochs = 500000
 epoch = 0
-plot_every = 10  # 2000
-print_every = 10  # 2000
-valid_every = 10  # 2000
-evaluate_every = 10  # 2000
+plot_every = 100  # 2000
+print_every = 100  # 2000
+valid_every = 100  # 2000
+evaluate_every = 100  # 2000
 save_every = 1000
 attn = False
 is_rl_train = True
@@ -369,13 +369,11 @@ dca = 0
 while epoch < n_epochs:
 
 	epoch += 1
-	if epoch % 10 == 0:
-		print(epoch)
 	# get random batch
 	input_batches, input_lengths, target_batches, target_lengths = random_batch(
 			batch_size, pairs, lang)
 	if is_rl_train:
-		loss, ec, dc = rl_train(input_batches,
+		loss, ec, dc = rl_train_outer_loop(input_batches,
 								input_lengths,
 								target_batches,
 								target_lengths,
@@ -385,8 +383,10 @@ while epoch < n_epochs:
 								encoder_opt,
 								decoder_opt,
 								utils.similarity,
-								lang)
+								lang,
+								clip)
 	
+		print(loss)
 	else:
 		loss, ec, dc = train(input_batches,
 							 input_lengths,

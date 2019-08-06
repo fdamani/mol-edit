@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 import torch.nn.utils.rnn as rnn_utils
 import selfies
 import process_data
-import Lang
 import masked_cross_entropy
 import random
 import time
@@ -33,16 +32,57 @@ from torch import optim
 from masked_cross_entropy import *
 from rdkit import Chem
 
+def rl_train_outer_loop(input_batches,
+					  input_lengths,
+					  target_batches,
+					  target_lengths,
+					  batch_size,
+					  encoder,
+					  decoder,
+					  encoder_optimizer,
+					  decoder_optimizer,
+					  reward_func,
+					  lang,
+					  clip):
+	''' loop over minibatch. for each sample pass to rl_train_inner_loop to compute
+	loss. sum over samples then call backward'''
+	encoder_optimizer.zero_grad()
+	decoder_optimizer.zero_grad()
+	b_size = input_batches.shape[1]
+	loss = 0
+	count = 0
+	for i in range(b_size):
+		sample_loss = rl_train_inner_loop(input_batches[:,i][:,None],
+										[input_lengths[i]],
+										target_batches[:,i][:,None],
+										[target_lengths[i]],
+										1,
+										encoder,
+										decoder,
+										reward_func,
+										lang)
+		if sample_loss is not None:
+			loss += sample_loss
+			count += 1
+	loss = loss / float(count)
+	print('count: ', count)
+	try:
+		loss.backward()
+	except:
+		return 0.0, 0.0, 0.0
+	ec = torch.nn.utils.clip_grad_norm(encoder.parameters(), clip)
+	dc = torch.nn.utils.clip_grad_norm(decoder.parameters(), clip)
+	encoder_optimizer.step()
+	decoder_optimizer.step()
+	return loss.item(), ec, dc
 
-def rl_train(input_batches,
+def rl_train_inner_loop(input_batches,
 		  input_lengths,
 		  target_batches,
 		  target_lengths,
 		  batch_size,
 		  encoder,
 		  decoder,
-		  encoder_optimizer,
-		  decoder_optimizer,
 		  reward_func,
 		  lang):
 	'''
@@ -50,16 +90,15 @@ def rl_train(input_batches,
 		using policy gradient training.
 		note: only works for batch of size 1.
 	'''
-	clip=50.0
 	input_smiles = []
-	for i in range(input_batches.shape[0]):
+	for i in range(input_lengths[0]):
 		input_smiles.append(lang.index2char[input_batches[i].item()])
 	input_smiles = selfies.decoder(''.join(input_smiles[:-1]))
-
-	# Zero gradients of both optimizers
-	encoder_optimizer.zero_grad()
-	decoder_optimizer.zero_grad()
-	loss = 0
+	
+	target_smiles = []
+	for i in range(target_lengths[0]):
+		target_smiles.append(lang.index2char[target_batches[i].item()])	
+	target_smiles = selfies.decoder(''.join(target_smiles[:-1]))
 
 	# Run words through encoder
 	encoder_outputs, encoder_hidden = encoder(input_batches, input_lengths)
@@ -94,14 +133,12 @@ def rl_train(input_batches,
 			else:
 				greedy_decoded_chars.append(lang.index2char[decoder_input.item()])
 
-
 			all_decoder_outputs[t] = decoder_output
-			decoder_input = target_batches[t]  # Next input is current target
 		greedy_smiles = selfies.decoder(''.join(greedy_decoded_chars[:-1]))
 		if greedy_smiles == -1:
-			return 0.0, 0.0, 0.0
+			return None
 		if Chem.MolFromSmiles(greedy_smiles) is None:
-			return 0.0, 0.0, 0.0
+			return None
 	############## sample decoding ##############
 	# this needs to be fixed
 	# we only want to retain the computation graph for the decoded input we use
@@ -140,13 +177,14 @@ def rl_train(input_batches,
 
 	sampled_smiles = selfies.decoder(''.join(sampled_decoded_chars[:-1]))
 	if sampled_smiles == -1:
-		return 0.0, 0.0, 0.0
+		return None
 	if Chem.MolFromSmiles(sampled_smiles) is None:
-		return 0.0, 0.0, 0.0
+		return None
 
 	############## reward ##############
-	sampled_rw = reward_func(input_smiles, sampled_smiles)
-	baseline_rw = reward_func(input_smiles, greedy_smiles)
+	supervised_rw = reward_func(input_smiles, target_smiles)
+	sampled_rw = reward_func(input_smiles, sampled_smiles) - supervised_rw
+	baseline_rw = reward_func(input_smiles, greedy_smiles) - supervised_rw
 
 	############## compute loss #########
 	# compute log p(y^s|x)
@@ -158,14 +196,7 @@ def rl_train(input_batches,
 		loss += criterion(logits[i].squeeze(dim=0), sampled_decoded_indices[i])
 
 	loss = loss * (sampled_rw - baseline_rw)
-	print('delta: ', (sampled_rw - baseline_rw))
-	loss.backward()
-	ec = torch.nn.utils.clip_grad_norm(encoder.parameters(), clip)
-	dc = torch.nn.utils.clip_grad_norm(decoder.parameters(), clip)
-
-	encoder_optimizer.step()
-	decoder_optimizer.step()
-	return loss.item(), ec, dc
+	return loss
 
 	# # sample a sequence s^ from the decoder.
 	# # compute grad log p
