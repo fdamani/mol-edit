@@ -1,3 +1,134 @@
+8.8
+	- write batching code for decoding without teacher forcing
+		- should be able to copy validate func with target lengths modified
+			to when each sample samples an EOS token.
+		- this should allow for fast mini-batching and application to RL.
+
+	- in addition to mini-batching code, initialize with xent weights and direct
+		rl training is failing. we need to gradually include it.
+		- options: mix xent with rl loss
+		- xent with rl loss on last step and work way backward.
+
+8.1
+	- take out accept-reject
+	- start w/ simple reward - maximize qed while tanimoto similarity is >= .4
+	- what does training do?
+
+
+
+	- initialize RL policy with xent trained to convergence
+	- experiment with different reward functions
+		- first try to optimize QED/logp
+		- see if we can change the weights such that it improves this metric (on training and valid)
+			- plot before and after
+		- no accept-reject sampling, just single sample (in many cases rw will be 0 if not valid molecule this is fine--if in general sample generation from policy results in high likelihood of being a sample you're good)
+	- review different options on how to integrate RL training
+		- iterative RL fine tuning
+			- train w/ xent then optimize qed with rl
+				- then optimize qed and TM sim with RL
+				- then optimize qed, TM sim, and logp with RL.
+
+
+7.31
+	- implement RL training objective (batch size 1)
+	- start with pretrained model (plot TM similarity)
+	- do a few steps of gradient descent (plot TM similarity) does it improve?
+
+7.30
+	- train a model on one of the synthetic tasks (regular lstm) with larger hidden units
+	- how to measure scaffold diversity?
+	- how to encode this desiderata into model?
+	- try encoding tanimoto similarity into model and optimizing for this metric
+	- once we do this, we can do the same for scaffold diversity
+	- then maybe a combo between the two.
+
+
+
+	- train a model on potency data (simple seq2seq model)
+	- given output, assess scaffold diversity and tanimoto similarity
+	- how do we directly encode that desiderata into our model?
+
+
+7.18
+	- compute tanimoto sim histogram for training data.
+	- implement attention
+		- need to speed up attention
+			- try static context, read about how others speed this up
+			- truncated backpropagation through time?
+			- bottleneck is backprop.
+	- train a model with attention
+	- collect tanimoto simlarity data.
+	- train language model for unsupervised pre-training.
+
+
+
+
+	- need to add better regularization to 1 layer model
+	- implement attention
+	- collect potency dataset (all pairs with tanimoto similarity > .4)
+		- look at potency measurements -> what is the right transform? plot histograms of this data.
+	- potency predictor
+	- run on a more challenging dataset with fewer samples and higher tanimoto similarity constraint?
+		- fewer samples means it might generalize poorer
+		- higher similarity constraint might be harder to generate.
+	- try out some RL ideas on maintaining that constraint.
+
+
+7.17
+	- running 1 layer and 2 layer models with saved checkpoints
+		- dropout included for 2 layer model
+
+	todo
+		- debug beam search 
+			- confirm it works
+		- implement attention-based architecture.
+		- implement multiple layered rnn with batchnorm.
+		- write code to generate potency dataset.
+			- all pairs with tanimoto similarity > .4
+		- language model pre-training.
+
+7.16
+	TODO
+		- add regularization to network
+			- tried 2 layers + dropout
+			- need more regularization
+				- smaller batch size
+				- look into other ways people regularize
+					- better optimization schedule
+		- add model checkpoints - every 5k save.
+		- run a model for longer - 500000 epochs.
+		- beam search
+		- unsupervised pre-training (language model)
+		- attention
+
+7.15
+	- plots of all metrics
+	- training/validation loss
+	- percent valid decoded
+	- histogram of qed (target) and (input)
+	- percent successful in target range.
+
+
+	TODO
+		- implement beam search to approximate arg max p(y|x)
+		- implement attention and transformer models
+			- do these help with tanimoto similarity? we think yes.
+		- look at potency data again.
+			- ask vishnu about the potency measurements
+			- what range is -logp in. what values does it take on.
+			- create multiple datasets
+				- create one dataset with all pairs that have similarity
+				> .4
+					- from this dataset, we can derive stricter thresholds and limit based on potency measurements.
+			- do this today it might take awhile.
+
+		- other decoders
+			- beam search
+			- ones that encourage diversity
+			- longer decodes?
+		- strong regression model to predict potency.
+
+
 7.14
 	- implemented evalute_func using greedy sampling
 		- delta qed
