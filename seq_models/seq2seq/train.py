@@ -32,6 +32,69 @@ from torch import optim
 from masked_cross_entropy import *
 from rdkit import Chem
 
+
+def mix_train(input_batches,
+					input_lengths,
+					target_batches,
+					target_lengths,
+					batch_size,
+					encoder,
+					decoder,
+					encoder_optimizer,
+					decoder_optimizer,
+					lang,
+					clip,
+					reward_func,
+					eta):
+	'''xent and rl training weighted by scaling factor eta'''
+	encoder_optimizer.zero_grad()
+	decoder_optimizer.zero_grad()
+
+	# xent loss
+	xent_loss = _xent_train(input_batches,
+								input_lengths,
+								target_batches,
+								target_lengths,
+								batch_size,
+								encoder,
+								decoder,
+								lang)
+
+	b_size = input_batches.shape[1]
+	rl_loss = 0
+	count = 0
+	for i in range(b_size):
+		sample_loss = rl_train_inner_loop(input_batches[:,i][:,None],
+										[input_lengths[i]],
+										target_batches[:,i][:,None],
+										[target_lengths[i]],
+										1,
+										encoder,
+										decoder,
+										reward_func,
+										lang)
+		if sample_loss is not None:
+			rl_loss += sample_loss
+			count += 1
+	if count == 0.0:
+		rl_loss = 0.0
+	else:
+		rl_loss = rl_loss / float(count)
+
+	total_loss = (1.0 - eta) * xent_loss + eta * rl_loss
+
+	total_loss.backward()
+
+	# Clip gradient norms
+	ec = torch.nn.utils.clip_grad_norm(encoder.parameters(), clip)
+	dc = torch.nn.utils.clip_grad_norm(decoder.parameters(), clip)
+
+	# Update parameters with optimizers
+	encoder_optimizer.step()
+	decoder_optimizer.step()
+
+	return total_loss.item(), ec, dc, count
+
 def xent_train(input_batches,
 					input_lengths,
 					target_batches,
@@ -42,11 +105,42 @@ def xent_train(input_batches,
 					encoder_optimizer,
 					decoder_optimizer,
 					lang,
-					clip):
+					clip,
+					reward_func=None,
+					eta=None):
+	encoder_optimizer.zero_grad()
+	decoder_optimizer.zero_grad()
 
-		# Zero gradients of both optimizers
-		encoder_optimizer.zero_grad()
-		decoder_optimizer.zero_grad()
+	loss = _xent_train(input_batches,
+								input_lengths,
+								target_batches,
+								target_lengths,
+								batch_size,
+								encoder,
+								decoder,
+								lang)
+
+	loss.backward()
+
+	# Clip gradient norms
+	ec = torch.nn.utils.clip_grad_norm(encoder.parameters(), clip)
+	dc = torch.nn.utils.clip_grad_norm(decoder.parameters(), clip)
+
+	# Update parameters with optimizers
+	encoder_optimizer.step()
+	decoder_optimizer.step()
+
+	return loss.item(), ec, dc, 0.0
+
+def _xent_train(input_batches,
+					input_lengths,
+					target_batches,
+					target_lengths,
+					batch_size,
+					encoder,
+					decoder,
+					lang):
+
 		loss = 0
 
 		# Run words through encoder
@@ -79,74 +173,21 @@ def xent_train(input_batches,
 				target_batches.transpose(0, 1).contiguous(),  # -> batch x seq
 				target_lengths)
 
-		loss.backward()
-
-		# Clip gradient norms
-		ec = torch.nn.utils.clip_grad_norm(encoder.parameters(), clip)
-		dc = torch.nn.utils.clip_grad_norm(decoder.parameters(), clip)
-
-		# Update parameters with optimizers
-		encoder_optimizer.step()
-		decoder_optimizer.step()
-
-		return loss.item(), ec, dc
-
+		return loss
 
 def rl_train_outer_loop(input_batches,
-					  input_lengths,
-					  target_batches,
-					  target_lengths,
-					  batch_size,
-					  encoder,
-					  decoder,
-					  encoder_optimizer,
-					  decoder_optimizer,
-					  reward_func,
-					  lang,
-					  clip):
-	''' loop over minibatch. for each sample pass to rl_train_inner_loop to compute
-	loss. sum over samples then call backward'''
-	encoder_optimizer.zero_grad()
-	decoder_optimizer.zero_grad()
-	b_size = input_batches.shape[1]
-	loss = 0
-	count = 0
-	for i in range(b_size):
-		sample_loss = rl_train_inner_loop(input_batches[:,i][:,None],
-										[input_lengths[i]],
-										target_batches[:,i][:,None],
-										[target_lengths[i]],
-										1,
-										encoder,
-										decoder,
-										reward_func,
-										lang)
-		if sample_loss is not None:
-			loss += sample_loss
-			count += 1
-	loss = loss / float(count)
-	try:
-		loss.backward()
-	except:
-		return 0.0, 0.0, 0.0, count
-	ec = torch.nn.utils.clip_grad_norm(encoder.parameters(), clip)
-	dc = torch.nn.utils.clip_grad_norm(decoder.parameters(), clip)
-	encoder_optimizer.step()
-	decoder_optimizer.step()
-	return loss.item(), ec, dc, count
-
-def rl_train_outer_loop(input_batches,
-					  input_lengths,
-					  target_batches,
-					  target_lengths,
-					  batch_size,
-					  encoder,
-					  decoder,
-					  encoder_optimizer,
-					  decoder_optimizer,
-					  reward_func,
-					  lang,
-					  clip):
+					input_lengths,
+					target_batches,
+					target_lengths,
+					batch_size,
+					encoder,
+					decoder,
+					encoder_optimizer,
+					decoder_optimizer,
+					lang,
+					clip,
+					reward_func,
+					eta):
 	''' loop over minibatch. for each sample pass to rl_train_inner_loop to compute
 	loss. sum over samples then call backward'''
 	encoder_optimizer.zero_grad()
@@ -186,12 +227,14 @@ def rl_train_inner_loop(input_batches,
 		  encoder,
 		  decoder,
 		  reward_func,
-		  lang):
+		  lang,
+		  temp=1.0):
 	'''
 		train a seq2seq model to minimize negative expected reward
 		using policy gradient training.
 		note: only works for batch of size 1.
 	'''
+	isInvalid = False
 	input_smiles = []
 	for i in range(input_lengths[0]):
 		input_smiles.append(lang.index2char[input_batches[i].item()])
@@ -226,6 +269,7 @@ def rl_train_inner_loop(input_batches,
 		for t in range(max_target_length):
 			decoder_output, decoder_hidden = decoder(
 				decoder_input, decoder_hidden, encoder_outputs)
+			decoder_output = decoder_output / temp
 			output = functional.log_softmax(decoder_output, dim=-1)
 			topv, topi = output.data.topk(1)
 			decoder_input = topi.view(1)
@@ -238,9 +282,9 @@ def rl_train_inner_loop(input_batches,
 			all_decoder_outputs[t] = decoder_output
 		greedy_smiles = selfies.decoder(''.join(greedy_decoded_chars[:-1]))
 		if greedy_smiles == -1:
-			return None
+			isInvalid = True
 		if Chem.MolFromSmiles(greedy_smiles) is None:
-			return None
+			isInvalid = True
 	############## sample decoding ##############
 	# this needs to be fixed
 	# we only want to retain the computation graph for the decoded input we use
@@ -279,13 +323,17 @@ def rl_train_inner_loop(input_batches,
 
 	sampled_smiles = selfies.decoder(''.join(sampled_decoded_chars[:-1]))
 	if sampled_smiles == -1:
-		return None
+		isInvalid = True
 	if Chem.MolFromSmiles(sampled_smiles) is None:
-		return None
+		isInvalid = True
 
 	############## reward ##############
-	sampled_rw = reward_func(target_smiles, sampled_smiles)
-	baseline_rw = reward_func(target_smiles, greedy_smiles)
+	if isInvalid:
+		rw = 1.0
+	else:
+		sampled_rw = reward_func(target_smiles, sampled_smiles)
+		baseline_rw = reward_func(target_smiles, greedy_smiles)
+		rw = (baseline_rw - sampled_rw)
 
 	############## compute loss #########
 	# compute log p(y^s|x)
@@ -296,37 +344,5 @@ def rl_train_inner_loop(input_batches,
 	for i in range(sampled_decoded_indices.shape[0]):
 		loss += -criterion(logits[i].squeeze(dim=0), sampled_decoded_indices[i])
 
-	loss = loss * (baseline_rw - sampled_rw)
+	loss = loss * rw
 	return loss
-
-	# # sample a sequence s^ from the decoder.
-	# # compute grad log p
-	# # evaluate reward_func(s^)
-
-
-
-	# # Run through decoder one time step at a time
-	# for t in range(max_target_length):
-	#   decoder_output, decoder_hidden = decoder(
-	#       decoder_input, decoder_hidden, encoder_outputs)
-
-	#   all_decoder_outputs[t] = decoder_output
-	#   decoder_input = target_batches[t]  # Next input is current target
-
-	# # Loss calculation and backpropagation
-	# loss = masked_cross_entropy(
-	#   all_decoder_outputs.transpose(0, 1).contiguous(),  # -> batch x seq
-	#   target_batches.transpose(0, 1).contiguous(),  # -> batch x seq
-	#   target_lengths)
-
-	# loss.backward()
-
-	# # Clip gradient norms
-	# ec = torch.nn.utils.clip_grad_norm(encoder.parameters(), clip)
-	# dc = torch.nn.utils.clip_grad_norm(decoder.parameters(), clip)
-
-	# # Update parameters with optimizers
-	# encoder_optimizer.step()
-	# decoder_optimizer.step()
-
-	# return loss.item(), ec, dc

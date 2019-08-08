@@ -37,7 +37,7 @@ from IPython import embed, display
 from torch import optim
 from masked_cross_entropy import *
 from utils import similarity
-from train import xent_train, rl_train_outer_loop
+from train import xent_train, rl_train_outer_loop, mix_train
 from evaluate import evaluate, validate
 
 # read and process data
@@ -152,17 +152,19 @@ qed_target = .9
 clip = 5.0
 teacher_forcing_ratio = 0.5
 learning_rate = 1e-4
-n_epochs = 500000
+n_epochs = 10000
 epoch = 0
-plot_every = 25  # 2000
-print_every = 25  # 2000
-valid_every = 25  # 2000
-evaluate_every = 25  # 2000
-save_every = 1000
+plot_every = 50  # 2000
+print_every = 50  # 2000
+valid_every = 50  # 2000
+evaluate_every = 50  # 2000
+save_every = 10000
 attn = False
-is_rl_train = False
+train_ops = {'mix': mix_train, 'rl': rl_train_outer_loop, 'xent': xent_train}
+training_mode = 'mix'
+
 # load saved weights
-pytorch_weights_load = False
+pytorch_weights_load = True
 # initialize models
 encoder = net.EncoderRNN(vocab_size=lang.n_chars,
 						 embed_size=embed_size,
@@ -208,37 +210,50 @@ eca = 0
 dca = 0
 
 while epoch < n_epochs:
-
+	eta = epoch / float(n_epochs)
 	epoch += 1
 	# get random batch
 	input_batches, input_lengths, target_batches, target_lengths = random_batch(
 			batch_size, pairs, lang)
-	if is_rl_train:
-		loss, ec, dc, count = rl_train_outer_loop(input_batches,
-								input_lengths,
-								target_batches,
-								target_lengths,
-								batch_size,
-								encoder,
-								decoder,
-								encoder_opt,
-								decoder_opt,
-								utils.similarity,
-								lang,
-								clip)
+	loss, ec, dc, count = train_ops[training_mode](input_batches=input_batches,
+												   input_lengths=input_lengths,
+												   target_batches=target_batches,
+												   target_lengths=target_lengths,
+												   batch_size=batch_size,
+												   encoder=encoder,
+												   decoder=decoder,
+												   encoder_optimizer=encoder_opt,
+												   decoder_optimizer=decoder_opt,
+												   lang=lang,
+												   clip=clip,
+												   reward_func=utils.similarity,
+												   eta=eta)
+	# if is_rl_train:
+	# 	loss, ec, dc, count = rl_train_outer_loop(input_batches,
+	# 							input_lengths,
+	# 							target_batches,
+	# 							target_lengths,
+	# 							batch_size,
+	# 							encoder,
+	# 							decoder,
+	# 							encoder_opt,
+	# 							decoder_opt,
+	# 							utils.similarity,
+	# 							lang,
+	# 							clip)
 	
-	else:
-		loss, ec, dc = xent_train(input_batches,
-							 input_lengths,
-							 target_batches,
-							 target_lengths,
-							 batch_size,
-							 encoder,
-							 decoder,
-							 encoder_opt,
-							 decoder_opt,
-							 lang,
-							 clip)
+	# else:
+	# 	loss, ec, dc = xent_train(input_batches,
+	# 						 input_lengths,
+	# 						 target_batches,
+	# 						 target_lengths,
+	# 						 batch_size,
+	# 						 encoder,
+	# 						 decoder,
+	# 						 encoder_opt,
+	# 						 decoder_opt,
+	# 						 lang,
+	# 						 clip)
 	print_loss_total += loss
 	plot_loss_total += loss
 	eca += ec
@@ -270,6 +285,7 @@ while epoch < n_epochs:
 												   evaluate_batch_size,
 												   encoder,
 												   decoder,
+												   lang,
 												   search='greedy')
 							decoded_str = selfies.decoder(decoded_str)
 							# invalid string
@@ -325,7 +341,9 @@ while epoch < n_epochs:
 										target_batches,
 										target_lengths,
 										valid_batch_size,
-										encoder, decoder,
+										encoder, 
+										decoder,
+										lang,
 										teacher_forcing=True)
 
 	if epoch % print_every == 0:

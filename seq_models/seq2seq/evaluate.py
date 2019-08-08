@@ -33,14 +33,15 @@ from masked_cross_entropy import *
 from rdkit import Chem
 
 def evaluate(input_batches,
-						 input_lengths,
-						 batch_size,
-						 encoder,
-						 decoder,
-						 search='greedy'):
+			 input_lengths,
+			 batch_size,
+			 encoder,
+			 decoder,
+			 lang,
+			 search='greedy'):
 		'''
-						:param search: decoding search strategies
-										{"greedy", "beam"}
+		:param search: decoding search strategies
+						{"greedy", "beam"}
 		'''
 		loss = 0
 		# Run words through encoder
@@ -94,13 +95,14 @@ def evaluate(input_batches,
 
 
 def validate(input_batches,
-						 input_lengths,
-						 target_batches,
-						 target_lengths,
-						 batch_size,
-						 encoder,
-						 decoder,
-						 teacher_forcing=True):
+			 input_lengths,
+			 target_batches,
+			 target_lengths,
+			 batch_size,
+			 encoder,
+			 decoder,
+			 lang,
+			 teacher_forcing=True):
 		loss = 0
 		# Run words through encoder
 		encoder_outputs, encoder_hidden = encoder(input_batches, input_lengths)
