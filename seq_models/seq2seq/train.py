@@ -283,8 +283,9 @@ def rl_train_inner_loop(input_batches,
 		greedy_smiles = selfies.decoder(''.join(greedy_decoded_chars[:-1]))
 		if greedy_smiles == -1:
 			isInvalid = True
-		if Chem.MolFromSmiles(greedy_smiles) is None:
-			isInvalid = True
+		else:
+			if Chem.MolFromSmiles(greedy_smiles) is None:
+				isInvalid = True
 	############## sample decoding ##############
 	# this needs to be fixed
 	# we only want to retain the computation graph for the decoded input we use
@@ -324,8 +325,9 @@ def rl_train_inner_loop(input_batches,
 	sampled_smiles = selfies.decoder(''.join(sampled_decoded_chars[:-1]))
 	if sampled_smiles == -1:
 		isInvalid = True
-	if Chem.MolFromSmiles(sampled_smiles) is None:
-		isInvalid = True
+	else:
+		if Chem.MolFromSmiles(sampled_smiles) is None:
+			isInvalid = True
 
 	############## reward ##############
 	if isInvalid:

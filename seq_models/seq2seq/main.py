@@ -152,12 +152,12 @@ qed_target = .9
 clip = 5.0
 teacher_forcing_ratio = 0.5
 learning_rate = 1e-4
-n_epochs = 10000
+n_epochs = 100000
 epoch = 0
-plot_every = 50  # 2000
-print_every = 50  # 2000
-valid_every = 50  # 2000
-evaluate_every = 50  # 2000
+plot_every = 100  # 2000
+print_every = 100  # 2000
+valid_every = 100  # 2000
+evaluate_every = 100  # 2000
 save_every = 10000
 attn = False
 train_ops = {'mix': mix_train, 'rl': rl_train_outer_loop, 'xent': xent_train}
@@ -210,7 +210,8 @@ eca = 0
 dca = 0
 
 while epoch < n_epochs:
-	eta = epoch / float(n_epochs)
+	#eta = epoch / float(n_epochs)
+	eta = 0.983
 	epoch += 1
 	# get random batch
 	input_batches, input_lengths, target_batches, target_lengths = random_batch(
