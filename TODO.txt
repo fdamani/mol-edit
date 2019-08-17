@@ -1,4 +1,17 @@
+8.9
+	- does the RL loss need to be normalized by number of tokens to avoid bias towards shorter sequence?
+	- try out a different baseline (instead of greedy decoding)
+	- right now we are performing one MC sample - should we be doing more?
+	- try label smoothing to prevent model from being overconfident about predicting the target character?
 8.8
+	- problem with rl reward func
+		- if sampled compound is invalid we should not return 0 loss
+			- if 0 loss there is no gradient which means we are not learning to avoid this!
+		- our reward should be negative so it learns to avoid in the future.
+		- probability of valid decoded should go up. this is implicit in our function.
+
+8.7
+
 	- write batching code for decoding without teacher forcing
 		- should be able to copy validate func with target lengths modified
 			to when each sample samples an EOS token.
