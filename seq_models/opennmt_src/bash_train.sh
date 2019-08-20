@@ -1,0 +1,16 @@
+python ../../OpenNMT-py/train.py -data ../../data/data \
+				-global_attention none \
+				-src_word_vec_size 50 \
+				-tgt_word_vec_size 50 \
+				-encoder_type rnn \
+				-decoder_type rnn \
+				-enc_layers 1 \
+				-dec_layers 1 \
+				-enc_rnn_size 50 \
+				-dec_rnn_size 50 \
+				-rnn_type LSTM \
+				-save_model ../../data/data-model \
+				-train_steps 4 \
+				-valid_steps 2 \
+				-batch_size 10 \
+				-save_checkpoint_steps 2 \
