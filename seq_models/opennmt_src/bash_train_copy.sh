@@ -1,15 +1,18 @@
-python ../../OpenNMT-py/train.py -data /tigress/fdamani/mol-edit-data/data/qed/onmt-new \
-				-global_attention dot \
+python ../../OpenNMT-py/train.py -data /tigress/fdamani/mol-edit-data/data/qed/onmt-copy \
+				-global_attention mlp \
 				-src_word_vec_size 500 \
 				-tgt_word_vec_size 500 \
-				-encoder_type brnn \
+				-encoder_type rnn \
 				-decoder_type rnn \
+				-copy_attn \
+				-reuse_copy_attn \
+				-copy_loss_by_seqlength \
 				-enc_layers 1 \
 				-dec_layers 1 \
 				-enc_rnn_size 500 \
 				-dec_rnn_size 500 \
 				-rnn_type LSTM \
-				-save_model /tigress/fdamani/mol-edit-output/onmt-qed/model-1layer-500wordembed-500embed-dotattention-birnn-adamoptim \
+				-save_model /tigress/fdamani/mol-edit-output/onmt-qed/model-1layer-500wordembed-500embed-dotattention-copy-adamoptim \
 				-train_steps 100000 \
 				-valid_steps 10000 \
 				-batch_size 64 \

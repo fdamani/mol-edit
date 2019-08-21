@@ -1,3 +1,3 @@
-python ../../OpenNMT-py/translate.py -model ../../data/data-model_step_2.pt \
-					-src ../../data/logp04/src_test_10.csv \
-					-output ../../data/pred.txt
+python ../../OpenNMT-py/translate.py -model /tigress/fdamani/mol-edit-output/onmt-qed/model_step_10000.pt \
+					-src /tigress/fdamani/mol-edit-data/data/qed/src_test.csv \
+					-output /tigress/fdamani/mol-edit-output/onmt-qed/model-output
