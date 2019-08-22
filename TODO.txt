@@ -1,3 +1,99 @@
+8.22
+	we have two same models training on logp04 and qed.
+		logp04: /tigress/fdamani/mol-edit-output/onmt-logp04/checkpoints/train_valid_share/model-mlpattention/model-brnnenc-rnndec-2layer-600wordembed-600embed-shareembedding-mlpattention-adamoptim \
+		qed: /tigress/fdamani/mol-edit-output/onmt-qed/checkpoints/train_valid_360_share/model-brnnenc-rnndec-2layer-600wordembed-600embed-shareembedding-mlpattention-adamoptim_step_2000.pt
+			- this needs to be filed under train_valid_share, not train_valid_360.
+
+				etached from 110169.pts-84.tigergpu
+				[detached from 138817.pts-27.tigergpu
+
+
+	- is word vec size too big? try 128 instead of 600.
+
+
+	- we need to fully understand the limits of seq2seq lstm with attention
+		- major limitation on certain test sets is inability to generate samples with high TM similarity.
+			- possible solutions:
+				- different attention
+				- smaller word embedding (128 instead of 500) + shared to prevent overfitting.
+				- more layers, different regularization
+				- different beam search method
+			- to better understand this limtation, compare results to our own 5k validation set. how do they differ? what makes our test set different than theirs?
+				- why do we perform much worse on theirs?
+	- once we understand this limitation we can try more complex models
+		- apply to potency data.
+		- copy
+		- multi-objective optimization.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	TODO
+		- will copying help increase TM similarity?
+			- need to run same model but with copy to assess.
+
+
+		- running a shared embedding model (brnn, 600 size, 2 layer) for qed with mlp attention
+		- lets run an equivalent model for logp
+		- show it can be used for multi-task optimization.
+
+		- key to multi-task will be high TM similarity on test data.
+
+
+		- run bigger model (already ready in train.sh)
+			- does this improve performance on test set?
+
+		- change beam search - use google nmt to prefer shorter sequences
+		- copy mechanism
+		- feed back in
+
+
+
+
+		- get tensorsboard working to save plots of validation ppl
+		- start decay earlier (before 50k). 
+		- save all beam outputs
+			- take the one that meets similarity.
+
+
+
+
+
+
+
+	- follow paper:
+		- train a qed model with 88k compounds
+		- train a 2 layer lstm with attention, dropout, label smoothing for a very large number of iters
+
+
+
+		- change translate code to report all beam compounds
+			- change evaluate code to look at all K beams per src compound
+				- report the best of the K beams
+				- compute diversity of K beams
+				- try out different penalizations on translate
+					- shorter strings have higher probability of being compounds
+		- run a few more models
+			- is xent reported for training? can we get validation loss printed?
+			- model is overfitting - how to fix?
+				- more layers+dropout
+				- label smoothing.
+			- lets stick to lstm+attention for now. this should do well.
+				- try different types of attention.
+
 8.9
 	- does the RL loss need to be normalized by number of tokens to avoid bias towards shorter sequence?
 	- try out a different baseline (instead of greedy decoding)
