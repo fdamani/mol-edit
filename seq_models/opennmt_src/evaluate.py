@@ -42,7 +42,7 @@ def penalized_logp(x):
 
 src = pd.read_csv(sys.argv[1], header=None)
 tgt = pd.read_csv(sys.argv[2], header=None)
-preds = pd.read_csv(sys.argv[3], header=None)
+preds = pd.read_csv(sys.argv[3], header=None, skip_blank_lines=False)
 
 num_evaluate = src.shape[0]
 valid = []
@@ -55,12 +55,17 @@ preds_string_length, tgt_string_length = [], []
 preds_molwt, tgt_molwt = [], []
 src_logp, preds_logp, tgt_logp = [], [], []
 preds_diversity, tgt_diversity = [], []
+errors=0
 for i in range(num_evaluate):
+	try:
+		preds_i = decoder(remove_spaces(''.join(preds.iloc[i])))
+	except:
+		print ('error')
+		errors+=1
+		continue
 	print(i)
 	src_i = decoder(remove_spaces(''.join(src.iloc[i])))
 	tgt_i = decoder(remove_spaces(''.join(tgt.iloc[i])))
-	preds_i = decoder(remove_spaces(''.join(preds.iloc[i])))
-
 	if preds_i == -1:
 		valid.append(0)
 		continue
@@ -108,17 +113,17 @@ percent_success = len(cands[cands>.4]) / float(num_evaluate)
 
 
 print('prediction mean sim: ', np.mean(preds_similarity), \
-		'true mean sim: ', np.mean(tgt_similarity), \
-		'percent valid: ', np.mean(valid), \
-		'src mean qed: ', np.mean(src_list_qed), \
-		'pred mean qed: ', np.mean(preds_list_qed), \
-		'tgt mean qed: ', np.mean(tgt_list_qed), \
-		'percent greater than .4 sim: ', preds_similarity[preds_similarity>.4].shape[0] / len(preds_similarity),\
-		'percent success: ', percent_success,\
-		'preds delta logp: ', np.mean(preds_logp-src_logp),\
-		'tgt delta logp: ', np.mean(tgt_logp-src_logp))
+		'\ntrue mean sim: ', np.mean(tgt_similarity), \
+		'\npercent valid: ', np.mean(valid), \
+		'\nsrc mean qed: ', np.mean(src_list_qed), \
+		'\npred mean qed: ', np.mean(preds_list_qed), \
+		'\ntgt mean qed: ', np.mean(tgt_list_qed), \
+		'\npercent greater than .4 sim: ', preds_similarity[preds_similarity>.4].shape[0] / len(preds_similarity),\
+		'\npercent success: ', percent_success,\
+		'\npreds delta logp: ', np.mean(preds_logp-src_logp),\
+		'\ntgt delta logp: ', np.mean(tgt_logp-src_logp))
 
-output_dir = '/tigress/fdamani/mol-edit-output/onmt-qed/output/'+sys.argv[3].split('/')[-1].split('.csv')[0]
+output_dir = '/tigress/fdamani/mol-edit-output/onmt-qed/output/train_valid_360/'+sys.argv[3].split('/')[-1].split('.csv')[0]
 
 if os.path.exists(output_dir):
 	print("DIRECTORY EXISTS. Continue to delete.")

@@ -1,19 +1,20 @@
-python ../../OpenNMT-py/train.py -data /tigress/fdamani/mol-edit-data/data/logp04/onmt \
-				-global_attention dot \
-				-src_word_vec_size 500 \
-				-tgt_word_vec_size 500 \
-				-encoder_type rnn \
+python ../../OpenNMT-py/train.py -data /tigress/fdamani/mol-edit-data/data/logp04/train_valid_share/data \
+				-global_attention mlp \
+				-word_vec_size 600 \
+				-share_embeddings \
+				-encoder_type brnn \
 				-decoder_type rnn \
-				-enc_layers 1 \
-				-dec_layers 1 \
-				-enc_rnn_size 500 \
-				-dec_rnn_size 500 \
+				-enc_layers 2 \
+				-dec_layers 2 \
+				-enc_rnn_size 600 \
+				-dec_rnn_size 600 \
+				-label_smoothing 0.1 \
 				-rnn_type LSTM \
-				-save_model /tigress/fdamani/mol-edit-output/onmt-logp04/checkpoints/model-rnnenc-rnndec-1layer-500wordembed-500embed-dotattention-adamoptim \
+				-save_model /tigress/fdamani/mol-edit-output/onmt-logp04/checkpoints/train_valid_share/model-mlpattention/model-brnnenc-rnndec-2layer-600wordembed-600embed-shareembedding-mlpattention-adamoptim \
 				-train_steps 100000 \
-				-valid_steps 10000 \
+				-valid_steps 500 \
 				-batch_size 64 \
-				-save_checkpoint_steps 5000 \
+				-save_checkpoint_steps 1000 \
 				-report_every 200 \
 				-world_size 1 \
 				-gpu_ranks 0 \
