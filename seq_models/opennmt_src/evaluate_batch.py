@@ -29,6 +29,11 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import shutil
+import scipy
+from scipy import stats
+
+from rdkit import Chem
+from rdkit.Chem.Scaffolds import MurckoScaffold
 
 def remove_spaces(x):
 	return x.replace(" ", "")
@@ -54,7 +59,9 @@ valid = []
 input_strs, tgt_strs, preds_strs = [], [], []
 preds_similarity, tgt_similarity = [], []
 src_list_qed, tgt_list_qed, preds_list_qed = [], [], []
-
+scaffold_div_train, scaffold_div_preds = [], [] # compute scaffold div using new metric
+scaffold_div_train_tm, scaffold_div_preds_tm = [], [] # compute scaffold div using just tm sim w/o scaffold
+scaffold_tm_agreement = []
 # distributional stats
 preds_string_length, tgt_string_length = [], []
 preds_molwt, tgt_molwt = [], []
@@ -65,26 +72,54 @@ training_src_logp = []
 best_sim = []
 errors=0
 logp_eval = True
+save = True
+isCandScaffold = False
+scaffold_val=-1
+src_selfies=True
+if logp_eval:
+	output_dir = '/tigress/fdamani/mol-edit-output/onmt-logp04/output/'+sys.argv[4].split('/')[-1].split('.csv')[0]
+else:
+	output_dir = '/tigress/fdamani/mol-edit-output/onmt-qed/output/train_valid_360/'+sys.argv[4].split('/')[-1].split('.csv')[0]
+
+if os.path.exists(output_dir):
+	print("DIRECTORY EXISTS. Continue to delete.")
+	if os.path.exists(output_dir+'/figs'): 
+		shutil.rmtree(output_dir+'/figs')
+	if os.path.exists(output_dir+'/data'): shutil.rmtree(output_dir+'/data')
+else:
+	os.mkdir(output_dir)
+os.mkdir(output_dir+'/figs')
+os.mkdir(output_dir+'/data')
+
 for i in range(0, n_best*num_evaluate, n_best):
-	print(i)
 	batch = []
 	batch_preds_qed, batch_preds_sim, batch_preds_logp = [], [], []
 	isError=False
 	for j in range(0, n_best):
 		itr = i+j
+		if len(preds.iloc[itr].dropna()) == 0:
+			#print('nan error')
+			continue
 		try:
 			preds_i = decoder(remove_spaces(''.join(preds.iloc[itr])))
 		except:
+			embed()
 			print ('error')
 			if not isError:
 				errors+=1
 			isError=True
 			continue
 
-		src_i = decoder(remove_spaces(''.join(src.iloc[int(i/n_best)])))
+		if src_selfies:
+			src_i = remove_spaces(''.join(src.iloc[int(i/n_best)]))
+		else:
+			src_i = decoder(remove_spaces(''.join(src.iloc[int(i/n_best)])))
+		
 		try:
 			batch_preds_logp.append(properties.penalized_logp(preds_i))
 		except:
+			print('cannot compute logp property.')
+			embed()
 			continue
 		batch_preds_qed.append(properties.qed(preds_i))
 		batch_preds_sim.append(mmpa.similarity(src_i, preds_i))
@@ -93,6 +128,7 @@ for i in range(0, n_best*num_evaluate, n_best):
 	batch_preds_logp = np.array(batch_preds_logp)
 	batch_preds_sim = np.array(batch_preds_sim)
 	best_sim.append(np.max(batch_preds_sim))
+	print(np.mean(batch_preds_sim), np.max(batch_preds_sim), len(batch_preds_sim))
 	cand_sim_inds = np.where(batch_preds_sim > 0.4)[0]
 	if len(cand_sim_inds) == 0:
 		continue
@@ -106,6 +142,7 @@ for i in range(0, n_best*num_evaluate, n_best):
 	src_i, preds_i = batch[final_ind]
 	if preds_i == -1:
 		valid.append(0)
+		print('invalid prediction via selfies decode.')
 		continue
 
 	input_qed = properties.qed(src_i)
@@ -113,6 +150,7 @@ for i in range(0, n_best*num_evaluate, n_best):
 
 	if pred_qed == 0.0:
 		valid.append(0)
+		print('invalid prediction via qed')
 		continue
 	src_list_qed.append(input_qed)
 	preds_list_qed.append(pred_qed)
@@ -123,8 +161,49 @@ for i in range(0, n_best*num_evaluate, n_best):
 	preds_string_length.append(len(preds_i))
 	preds_molwt.append(molwt(preds_i))
 	preds_logp.append(penalized_logp(preds_i)), src_logp.append(penalized_logp(src_i))
+
+	cand_div = []
+	cand_div_tm = []
+	for cand in cand_sim_inds:
+		s,t = batch[cand]
+		s_logp = properties.penalized_logp(s)
+		t_logp = properties.penalized_logp(t)
+		# restrict to candidates where pred is better than s
+		if properties.penalized_logp(t) > properties.penalized_logp(s):
+			s_core = Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(Chem.MolFromSmiles(s)))
+			t_core = Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(Chem.MolFromSmiles(t)))
+			cand_div.append(mmpa.similarity(s_core, t_core))
+			cand_div_tm.append(mmpa.similarity(s, t))
+	cand_div = np.array(cand_div)
+	cand_div_tm = np.array(cand_div_tm)
+	if len(cand_div) !=0:
+		scaffold_div_preds.append(np.min(cand_div))
+		scaffold_div_preds_tm.append(np.min(cand_div_tm))
+		scaffold_tm_agreement.append(np.argmin(cand_div)==np.argmin(cand_div_tm))
+		if np.min(cand_div) < 0.2:
+			isCandScaffold = True
+			scaffold_val = '%.3f'%(np.min(cand_div))
+
+	if len(cand_sim_inds) >= 1 or isCandScaffold:
+		if save:
+			smiles_to_save = [] # save src, tgt1, tgt2, ...
+			smiles_to_save.append(batch[0][0])
+			for cand in cand_sim_inds:
+				s, t = batch[cand]
+				s_core = Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(Chem.MolFromSmiles(s)))
+				t_core = Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(Chem.MolFromSmiles(t)))
+				smiles_to_save.append(t)
+			if isCandScaffold:
+				save_path = output_dir+'/data/'+str(i)+'_diverse_'+str(scaffold_val)+'_translation_example.csv'
+			else:
+				save_path = output_dir+'/data/'+str(i)+'_translation_example.csv'
+
+			pd.DataFrame(smiles_to_save).to_csv(save_path, header=None, index=None)
+		isCandScaffold = False
+
 # compute empirical distribution over target data
-for i in range(0, training_tgt.shape[0]):
+end = training_tgt.shape[0]
+for i in range(0, end):
 	tgt_smiles = decoder(remove_spaces(''.join(training_tgt.iloc[i])))
 	src_smiles = decoder(remove_spaces(''.join(training_src.iloc[i])))
 	tgt_similarity.append(mmpa.similarity(src_smiles, tgt_smiles))
@@ -135,12 +214,17 @@ for i in range(0, training_tgt.shape[0]):
 	tgt_logp.append(penalized_logp(tgt_smiles))
 	training_src_logp.append(penalized_logp(src_smiles))
 
-	if i % 100 == 0:
-		print(i)
-	if i % 10000 == 0 and i!=0:
+	s_core = Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(Chem.MolFromSmiles(src_smiles)))
+	t_core = Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(Chem.MolFromSmiles(tgt_smiles)))
+	scaffold_div_train.append(mmpa.similarity(s_core, t_core))
+	if i % 500 == 0 and i!=0:
 		break
 
 # cast to numpy array
+scaffold_div_preds = np.array(scaffold_div_preds)
+scaffold_div_train = np.array(scaffold_div_train)
+scaffold_tm_agreement = np.array(scaffold_tm_agreement)
+scaffold_div_preds_tm = np.array(scaffold_div_preds_tm)
 best_sim = np.array(best_sim)
 preds_similarity = np.array(preds_similarity)
 tgt_similarity = np.array(tgt_similarity)
@@ -154,7 +238,7 @@ preds_logp = np.array(preds_logp)
 tgt_logp = np.array(tgt_logp)
 src_logp = np.array(src_logp)
 if logp_eval:
-	percent_success = preds_logp.shape[0] / float(num_evaluate)
+	percent_success = preds_logp.shape[0] / (float(num_evaluate)-errors)
 else:
 	cands = preds_similarity[preds_list_qed > 0.9]
 	percent_success = len(cands[cands>.4]) / (float(num_evaluate)-errors)
@@ -163,8 +247,8 @@ else:
 # preds_diversity = mmpa.population_diversity(preds_strs)
 # tgt_diversity = mmpa.population_diversity(tgt_strs)
 
-
-print('prediction mean sim: ', np.mean(preds_similarity), \
+embed()
+print('prediction mean sim: ', np.mean(best_sim), \
 		'\ntrue mean sim: ', np.mean(tgt_similarity), \
 		'\npercent valid: ', np.mean(valid), \
 		'\nsrc mean qed: ', np.mean(src_list_qed), \
@@ -172,17 +256,14 @@ print('prediction mean sim: ', np.mean(preds_similarity), \
 		'\ntgt mean qed: ', np.mean(tgt_list_qed), \
 		'\npercent greater than .4 sim: ', preds_similarity[preds_similarity>.4].shape[0] / len(preds_similarity),\
 		'\npercent success: ', percent_success,\
-		'\npreds delta logp: ', np.mean(preds_logp-src_logp),\
+		'\npreds delta logp: ', np.mean(preds_logp-src_logp), np.std(preds_logp-src_logp), \
 		'\ntgt delta logp: ', np.mean(tgt_logp-training_src_logp))
+embed()
+# we want to compute spearman rank correlation between scaffold_div_preds and scaffold_div_preds_tm
+# compute mean of scaffold_tm_agreement
+print('scaffold and tm div agreement: ', np.mean(scaffold_tm_agreement))
+print('spearman rank corr: ', scipy.stats.spearmanr(scaffold_div_preds, scaffold_div_preds_tm))
 
-#output_dir = '/tigress/fdamani/mol-edit-output/onmt-qed/output/train_valid_360/'+sys.argv[4].split('/')[-1].split('.csv')[0]
-output_dir = '/tigress/fdamani/mol-edit-output/onmt-logp04/output/'+sys.argv[4].split('/')[-1].split('.csv')[0]
-
-if os.path.exists(output_dir):
-	print("DIRECTORY EXISTS. Continue to delete.")
-	shutil.rmtree(output_dir)
-os.mkdir(output_dir)
-os.mkdir(output_dir+'/figs')
 plt.cla()
 plt.hist(np.array(tgt_similarity), bins=40, alpha=0.5, density=True, label='Training Emp Dist')
 plt.hist(np.array(best_sim), bins=40,  alpha=0.5, density=True, label='Test Preds')
@@ -197,7 +278,6 @@ plt.hist(tgt_list_qed, bins=80, alpha=0.5, density=True, label='Training Tgts')
 plt.hist(preds_list_qed, bins=80, alpha=0.5, density=True, label='Test Preds')
 plt.xlabel("QED")
 plt.ylabel("Count")
-plt.xlim([.6, 1.0])
 plt.legend()
 plt.savefig(output_dir+'/figs/hist_qed.png')
 
@@ -218,9 +298,27 @@ plt.legend()
 plt.savefig(output_dir+'/figs/logp.png')
 
 plt.cla()
+plt.hist(preds_logp, bins=40, alpha=0.5, density=True, label='Preds')
+plt.hist(src_logp, bins=40, alpha=0.5, density=True, label='Seeds')
+plt.xlabel("Delta LogP")
+plt.ylabel("Count")
+plt.legend()
+plt.savefig(output_dir+'/figs/logp.png')
+
+
+
+plt.cla()
 plt.hist(preds_molwt, bins=40, alpha=0.5, density=True, label='Test Preds')
 plt.hist(tgt_molwt, bins=40, alpha=0.5, density=True, label='Training Tgts')
 plt.xlabel("MolWt")
 plt.ylabel("Count")
 plt.legend()
 plt.savefig(output_dir+'/figs/molwt.png')
+
+plt.cla()
+plt.hist(scaffold_div_preds, bins=40, alpha=0.5, density=True, label='Test Preds')
+plt.hist(scaffold_div_train, bins=40, alpha=0.5, density=True, label='Training Tgts')
+plt.xlabel("Scaffold Div.")
+plt.ylabel("Count")
+plt.legend()
+plt.savefig(output_dir+'/figs/scaffold_div.png')
