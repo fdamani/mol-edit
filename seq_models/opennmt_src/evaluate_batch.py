@@ -51,7 +51,7 @@ src = pd.read_csv(sys.argv[1], header=None)
 training_src = pd.read_csv(sys.argv[2], header=None)
 training_tgt = pd.read_csv(sys.argv[3], header=None)
 preds = pd.read_csv(sys.argv[4], header=None, skip_blank_lines=False)
-n_best = 20
+n_best = 60
 
 
 num_evaluate = src.shape[0]
@@ -75,9 +75,15 @@ logp_eval = True
 save = True
 isCandScaffold = False
 scaffold_val=-1
-src_selfies=True
+prop_unique_scaffolds_per_seed = []
+prop_rgroup_edits = []
+prop_scaffold_edits = []
+
+mean_src_num_h_acceptors, mean_tgt_num_h_acceptors, mean_src_num_h_donors, \
+	mean_tgt_num_h_donors, mean_src_num_rotatable, mean_tgt_num_rotatable = [], [], [], [], [], []
+
 if logp_eval:
-	output_dir = '/tigress/fdamani/mol-edit-output/onmt-logp04/output/'+sys.argv[4].split('/')[-1].split('.csv')[0]
+	output_dir = '/tigress/fdamani/mol-edit-output/onmt-logp04/output/top800_top_90/'+sys.argv[4].split('/')[-1].split('.csv')[0]
 else:
 	output_dir = '/tigress/fdamani/mol-edit-output/onmt-qed/output/train_valid_360/'+sys.argv[4].split('/')[-1].split('.csv')[0]
 
@@ -95,6 +101,7 @@ for i in range(0, n_best*num_evaluate, n_best):
 	batch = []
 	batch_preds_qed, batch_preds_sim, batch_preds_logp = [], [], []
 	isError=False
+	unique_set = []
 	for j in range(0, n_best):
 		itr = i+j
 		if len(preds.iloc[itr].dropna()) == 0:
@@ -102,6 +109,11 @@ for i in range(0, n_best*num_evaluate, n_best):
 			continue
 		try:
 			preds_i = decoder(remove_spaces(''.join(preds.iloc[itr])))
+			# remove duplicate predictions
+			if preds_i not in unique_set:
+				unique_set.append(preds_i)
+			else:
+				continue
 		except:
 			embed()
 			print ('error')
@@ -109,11 +121,7 @@ for i in range(0, n_best*num_evaluate, n_best):
 				errors+=1
 			isError=True
 			continue
-
-		if src_selfies:
-			src_i = remove_spaces(''.join(src.iloc[int(i/n_best)]))
-		else:
-			src_i = decoder(remove_spaces(''.join(src.iloc[int(i/n_best)])))
+		src_i = decoder(remove_spaces(''.join(src.iloc[int(i/n_best)])))
 		
 		try:
 			batch_preds_logp.append(properties.penalized_logp(preds_i))
@@ -128,7 +136,6 @@ for i in range(0, n_best*num_evaluate, n_best):
 	batch_preds_logp = np.array(batch_preds_logp)
 	batch_preds_sim = np.array(batch_preds_sim)
 	best_sim.append(np.max(batch_preds_sim))
-	print(np.mean(batch_preds_sim), np.max(batch_preds_sim), len(batch_preds_sim))
 	cand_sim_inds = np.where(batch_preds_sim > 0.4)[0]
 	if len(cand_sim_inds) == 0:
 		continue
@@ -158,9 +165,48 @@ for i in range(0, n_best*num_evaluate, n_best):
 
 	input_strs.append(src_i), preds_strs.append(preds_i), valid.append(1)
 
-	preds_string_length.append(len(preds_i))
-	preds_molwt.append(molwt(preds_i))
 	preds_logp.append(penalized_logp(preds_i)), src_logp.append(penalized_logp(src_i))
+
+	# compute other distributional stats, num rotatable bonds, num hbond acceptors, num hbond donors
+	src_num_h_acceptors, tgt_num_h_acceptors, src_num_h_donors, tgt_num_h_donors = [], [], [], []
+	src_num_rotatable, tgt_num_rotatable = [], []
+	for j in range(len(cand_sim_inds)):
+		s,t = batch[cand_sim_inds[j]]
+		mol_s = Chem.MolFromSmiles(s)
+		mol_t = Chem.MolFromSmiles(t)
+		src_num_h_acceptors.append(rdkit.Chem.Lipinski.NumHAcceptors(mol_s))
+		tgt_num_h_acceptors.append(rdkit.Chem.Lipinski.NumHAcceptors(mol_t))
+		src_num_h_donors.append(rdkit.Chem.Lipinski.NumHDonors(mol_s))
+		tgt_num_h_donors.append(rdkit.Chem.Lipinski.NumHDonors(mol_t))
+		src_num_rotatable.append(rdkit.Chem.Lipinski.NumRotatableBonds(mol_s))
+		tgt_num_rotatable.append(rdkit.Chem.Lipinski.NumRotatableBonds(mol_t))
+
+	mean_src_num_h_acceptors.append(np.mean(src_num_h_acceptors))
+	mean_tgt_num_h_acceptors.append(np.mean(tgt_num_h_acceptors))
+	mean_src_num_h_donors.append(np.mean(src_num_h_donors))
+	mean_tgt_num_h_donors.append(np.mean(tgt_num_h_donors))
+	mean_src_num_rotatable.append(np.mean(src_num_rotatable))
+	mean_tgt_num_rotatable.append(np.mean(tgt_num_rotatable))
+
+	# entropy of candidate set: pairwise tm sim between scaffolds 
+	unique_scaffolds = []
+	num_rgroup_edits = 0
+	num_scaffold_edits = 0
+	for j in range(len(cand_sim_inds)):
+		s,t = batch[cand_sim_inds[j]]
+		t_core = Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(Chem.MolFromSmiles(t)))
+		s_core = Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(Chem.MolFromSmiles(s)))
+		if t_core not in unique_scaffolds:
+			unique_scaffolds.append(t_core)
+		if t_core == s_core:
+			num_rgroup_edits += 1
+		else:
+			num_scaffold_edits += 1
+	prop_unique_scaffolds = len(unique_scaffolds)/float(len(cand_sim_inds))
+	if len(cand_sim_inds) > 4:
+		prop_unique_scaffolds_per_seed.append(prop_unique_scaffolds)
+		prop_rgroup_edits.append(num_rgroup_edits / float(len(cand_sim_inds)))
+		prop_scaffold_edits.append(num_scaffold_edits / float(len(cand_sim_inds)))
 
 	cand_div = []
 	cand_div_tm = []
@@ -174,6 +220,10 @@ for i in range(0, n_best*num_evaluate, n_best):
 			t_core = Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(Chem.MolFromSmiles(t)))
 			cand_div.append(mmpa.similarity(s_core, t_core))
 			cand_div_tm.append(mmpa.similarity(s, t))
+	
+			preds_molwt.append(molwt(t))
+			preds_string_length.append(len(t))
+
 	cand_div = np.array(cand_div)
 	cand_div_tm = np.array(cand_div_tm)
 	if len(cand_div) !=0:
@@ -221,6 +271,16 @@ for i in range(0, end):
 		break
 
 # cast to numpy array
+mean_tgt_num_rotatable = np.array(mean_tgt_num_rotatable)
+mean_src_num_rotatable = np.array(mean_src_num_rotatable)
+mean_tgt_num_h_donors = np.array(mean_tgt_num_h_donors)
+mean_src_num_h_donors = np.array(mean_src_num_h_donors)
+mean_tgt_num_h_acceptors = np.array(mean_tgt_num_h_acceptors)
+mean_src_num_h_acceptors = np.array(mean_src_num_h_acceptors)
+
+prop_unique_scaffolds_per_seed = np.array(prop_unique_scaffolds_per_seed)
+prop_rgroup_edits = np.array(prop_rgroup_edits)
+prop_scaffold_edits = np.array(prop_scaffold_edits)
 scaffold_div_preds = np.array(scaffold_div_preds)
 scaffold_div_train = np.array(scaffold_div_train)
 scaffold_tm_agreement = np.array(scaffold_tm_agreement)
@@ -247,7 +307,7 @@ else:
 # preds_diversity = mmpa.population_diversity(preds_strs)
 # tgt_diversity = mmpa.population_diversity(tgt_strs)
 
-embed()
+
 print('prediction mean sim: ', np.mean(best_sim), \
 		'\ntrue mean sim: ', np.mean(tgt_similarity), \
 		'\npercent valid: ', np.mean(valid), \
@@ -258,18 +318,30 @@ print('prediction mean sim: ', np.mean(best_sim), \
 		'\npercent success: ', percent_success,\
 		'\npreds delta logp: ', np.mean(preds_logp-src_logp), np.std(preds_logp-src_logp), \
 		'\ntgt delta logp: ', np.mean(tgt_logp-training_src_logp))
-embed()
+
 # we want to compute spearman rank correlation between scaffold_div_preds and scaffold_div_preds_tm
 # compute mean of scaffold_tm_agreement
 print('scaffold and tm div agreement: ', np.mean(scaffold_tm_agreement))
 print('spearman rank corr: ', scipy.stats.spearmanr(scaffold_div_preds, scaffold_div_preds_tm))
 
 plt.cla()
+fig,ax = plt.subplots(1)
 plt.hist(np.array(tgt_similarity), bins=40, alpha=0.5, density=True, label='Training Emp Dist')
-plt.hist(np.array(best_sim), bins=40,  alpha=0.5, density=True, label='Test Preds')
+plt.hist(np.array(best_sim), bins=40,  alpha=0.5, density=True, label='Test Preds Best Sim')
+plt.xlabel("Tanimoto Similarity Max")
+plt.ylabel("Count")
+plt.legend()
+ax.set_yticklabels([])
+plt.savefig(output_dir+'/figs/hist_tm_simmax.png')
+
+plt.cla()
+fig,ax=plt.subplots(1)
+plt.hist(np.array(tgt_similarity), bins=40, alpha=0.5, density=True, label='Training Emp Dist')
+plt.hist(np.array(preds_similarity), bins=40,  alpha=0.5, density=True, label='Test Preds')
 plt.xlabel("Tanimoto Similarity")
 plt.ylabel("Count")
 plt.legend()
+ax.set_yticklabels([])
 plt.savefig(output_dir+'/figs/hist_tm_sim.png')
 
 plt.cla()
@@ -295,30 +367,101 @@ plt.hist((tgt_logp-training_src_logp), bins=40, alpha=0.5, density=True, label='
 plt.xlabel("Delta LogP")
 plt.ylabel("Count")
 plt.legend()
-plt.savefig(output_dir+'/figs/logp.png')
+plt.savefig(output_dir+'/figs/deltalogp.png')
 
 plt.cla()
-plt.hist(preds_logp, bins=40, alpha=0.5, density=True, label='Preds')
-plt.hist(src_logp, bins=40, alpha=0.5, density=True, label='Seeds')
-plt.xlabel("Delta LogP")
+fig,ax=plt.subplots(1)
+plt.hist(preds_logp, alpha=0.5, density=True, label='Preds')
+plt.hist(src_logp, alpha=0.5, density=True, label='Seeds')
+plt.xlabel("Penalized LogP")
 plt.ylabel("Count")
 plt.legend()
+ax.set_yticklabels([])
 plt.savefig(output_dir+'/figs/logp.png')
 
-
-
 plt.cla()
+fig,ax=plt.subplots(1)
 plt.hist(preds_molwt, bins=40, alpha=0.5, density=True, label='Test Preds')
 plt.hist(tgt_molwt, bins=40, alpha=0.5, density=True, label='Training Tgts')
 plt.xlabel("MolWt")
 plt.ylabel("Count")
 plt.legend()
+ax.set_yticklabels([])
 plt.savefig(output_dir+'/figs/molwt.png')
 
 plt.cla()
+fig,ax=plt.subplots(1)
 plt.hist(scaffold_div_preds, bins=40, alpha=0.5, density=True, label='Test Preds')
 plt.hist(scaffold_div_train, bins=40, alpha=0.5, density=True, label='Training Tgts')
 plt.xlabel("Scaffold Div.")
 plt.ylabel("Count")
 plt.legend()
+ax.set_yticklabels([])
 plt.savefig(output_dir+'/figs/scaffold_div.png')
+
+
+plt.cla()
+fig,ax=plt.subplots(1)
+plt.hist(prop_unique_scaffolds_per_seed, alpha=0.5, density=True, label='Test Preds')
+plt.xlabel("Prop. Unique Scaffolds Per Seed")
+plt.ylabel("Count")
+plt.legend()
+ax.set_yticklabels([])
+plt.savefig(output_dir+'/figs/entropy_prop_unique_scaffolds.png')
+
+
+plt.cla()
+fig,ax=plt.subplots(1)
+plt.hist(prop_rgroup_edits, alpha=0.5, density=True, label='Test Preds')
+plt.xlabel("Prop. R Group Edits Per Seed")
+plt.ylabel("Count")
+plt.legend()
+ax.set_yticklabels([])
+plt.savefig(output_dir+'/figs/prop_rgroup_edits.png')
+
+
+plt.cla()
+fig,ax=plt.subplots(1)
+plt.hist(prop_scaffold_edits, alpha=0.5, density=True, label='Test Preds')
+plt.xlabel("Prop. Scaffold Edits Per Seed")
+plt.ylabel("Count")
+plt.legend()
+ax.set_yticklabels([])
+plt.savefig(output_dir+'/figs/prop_scaffold_edits.png')
+
+
+################################################################
+plt.cla()
+fig,ax=plt.subplots(1)
+plt.hist(mean_tgt_num_rotatable, alpha=0.5, density=True, label='Preds')
+plt.hist(mean_src_num_rotatable, alpha=0.5, density=True, label='Seeds')
+plt.xlabel("Mean Rotatable Bonds")
+plt.ylabel("Count")
+plt.legend()
+ax.set_yticklabels([])
+plt.savefig(output_dir+'/figs/rotatable_bonds.png')
+
+
+plt.cla()
+fig,ax=plt.subplots(1)
+plt.hist(mean_tgt_num_h_acceptors, alpha=0.5, density=True, label='Preds')
+plt.hist(mean_src_num_h_acceptors, alpha=0.5, density=True, label='Seeds')
+plt.xlabel("Mean Num Hydrogen Acceptors")
+plt.ylabel("Count")
+plt.legend()
+ax.set_yticklabels([])
+plt.savefig(output_dir+'/figs/hydrogen_acceptors.png')
+
+
+plt.cla()
+fig,ax=plt.subplots(1)
+plt.hist(mean_tgt_num_h_donors, alpha=0.5, density=True, label='Preds')
+plt.hist(mean_src_num_h_donors, alpha=0.5, density=True, label='Seeds')
+plt.xlabel("Mean Num Hydrogen Donors")
+plt.ylabel("Count")
+plt.legend()
+ax.set_yticklabels([])
+plt.savefig(output_dir+'/figs/hydrogen_donors.png')
+
+
+embed()
