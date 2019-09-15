@@ -32,6 +32,7 @@ import rdkit
 from rdkit import Chem
 from rdkit.Chem import Draw
 import os
+import seaborn as sns
 
 def remove_spaces(x):
 	return x.replace(" ", "")
@@ -167,7 +168,9 @@ path_to_figs=xdir+'/figs'
 if not os.path.exists(path_to_figs):
 	os.mkdir(path_to_figs)
 dotted_style = {'logp': 'dotted', 'qed': 'solid'}
-color = {'beam': 'r', 'softmax_randtop2': 'b', 'softmax_randtop5': 'g'}
+#color = {'beam': 'r', 'softmax_randtop2': 'b', 'softmax_randtop5': 'g'}
+color = {'beam': sns.xkcd_rgb["pale red"], 'softmax_randtop2': sns.xkcd_rgb["medium green"], 'softmax_randtop5': sns.xkcd_rgb["denim blue"]}
+
 for tp in types:
 	for rt in rank_types:
 		plt.errorbar(x=np.arange(start, end), y=type_logp_means[tp][rt], yerr=type_logp_stds[tp][rt], color=color[tp], linestyle=dotted_style[rt], label=labels[tp]+', '+rt_labels[rt])

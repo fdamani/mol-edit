@@ -38,7 +38,7 @@ def remove_spaces(x):
 	return x.replace(" ", "")
 
 
-data_src = "qed"
+data_src = "logp04"
 #data_src="logp04"
 #data_src = "logp04"
 #seed="jin_test"
@@ -68,12 +68,13 @@ def property_func(x):
 #types=['softmax_randtop5']
 #labels=['Rnd Top 5']
 #types = ['beam20', 'softmax_randtop2', 'softmax_randtop3', 'softmax_randtop4', 'softmax_randtop5']
-types = ['beam', 'softmax_randtop2', 'softmax_randtop5']
-labels = ['Beam', 'Rnd Top 2', 'Rnd Top 5']
-rank_types=['logp', 'maxdeltasim', 'maxseedsim', 'mindeltasim', 'minmolwt', 'qed']
+decoding_types = ['softmax_randtop5']
+#labels = ['Beam', 'Rnd Top 2', 'Rnd Top 5']
+types=['logp', 'maxdeltasim', 'maxseedsim', 'minmolwt']#, 'qed']
+labels=['logP', 'Max Pairwise Sim', 'Max Seed Sim', 'Min Mol Wt']
 #rank_types=['logp', 'maxdeltasim']
-rt = rank_types[3]
-
+#rt = rank_types[3]
+#tp = types[0]
 type_logp_means = {}
 type_logp_stds = {}
 type_prop_valid = {}
@@ -83,7 +84,7 @@ type_optimal_logp_iter = {}
 type_optimal_logp_iter_std = {}
 type_max_logp_iter = {}
 for tp in types:
-	dr = xdir+'/'+tp+'/'+rt
+	dr = xdir+'/'+decoding_types[0]+'/'+tp
 	logp_means = []
 	logp_stds = []
 	prop_valid = []
@@ -137,40 +138,6 @@ for tp in types:
 		prop_valid.append(len(local_logp)/float(X.shape[0]))
 		smiles_dict[num] = smiles
 		print(num, max_logp)
-		# save top 10 compounds
-	inds = np.argsort(optimal_logp)#[-20:]
-	for ind in inds:
-		logpvals = []
-		mols = []
-		smiles_loc = []
-		for i in range(start, end):
-			try:
-				sm = smiles_dict[i][ind]
-			except:
-				break
-			smiles_loc.append(sm)
-			logpvals.append(property_func(sm))
-			mx = Chem.MolFromSmiles(sm)
-			mols.append(mx)
-		maxind = np.argmax(logpvals)
-		relevant_mols = mols[0:maxind+1]
-		relevant_smiles = smiles_loc[0:maxind+1]
-		logpvals_strs = []
-		for i in range(0, maxind+1):
-			if data_src=='qed':
-				logpvals_strs.append("QED="+"{:.3f}".format(logpvals[i]))
-			else:
-				logpvals_strs.append("logP="+"{:.3f}".format(logpvals[i]))
-		img=Draw.MolsToGridImage(relevant_mols, molsPerRow=4, subImgSize=(400,400), legends=logpvals_strs)
-		path_to_figs = xdir+'/'+tp+'/'+rt+'/figs'
-		if not os.path.exists(path_to_figs):
-			os.mkdir(path_to_figs)
-		if not os.path.exists(path_to_figs+'/cmpds'):
-			os.mkdir(path_to_figs+'/cmpds')
-		img.save(path_to_figs+'/cmpds/'+str(ind)+'.png')
-		outfile = open(path_to_figs+'/cmpds/'+str(ind)+'.txt', 'w+')
-		outfile.write("\n".join(relevant_smiles))
-		outfile.close()
 	# save to dict
 	type_max_logp_iter[tp] = np.array(max_logp_iter)
 	type_optimal_logp_iter[tp] = np.array(optimal_logp_iter)
@@ -180,7 +147,10 @@ for tp in types:
 	type_prop_valid[tp] = np.array(prop_valid)
 
 ###################################################################
-color = {'beam': sns.xkcd_rgb["pale red"], 'softmax_randtop2': sns.xkcd_rgb["medium green"], 'softmax_randtop5': sns.xkcd_rgb["denim blue"]}
+#types=['logp', 'maxdeltasim', 'maxseedsim', 'minmolwt']
+
+color = {'logp': sns.xkcd_rgb["pale red"], 'maxdeltasim': sns.xkcd_rgb["medium green"], 'maxseedsim': sns.xkcd_rgb["denim blue"],
+		'minmolwt': sns.xkcd_rgb["medium purple"], 'qed': sns.xkcd_rgb["medium brown"]}
 path_to_figs=xdir+'/figs'
 if not os.path.exists(path_to_figs):
 	os.mkdir(path_to_figs)
@@ -189,7 +159,7 @@ plt.cla()
 for i in range(len(types)):
 	tp = types[i]
 	lab = labels[i]
-	plt.plot(np.arange(start,end), color=color[tp], linestyle='solid', label=lab +', Recurse Inference')
+	plt.plot(np.arange(start,end), color=color[tp], linestyle='solid', label=lab +', Rec. Inf.')
 	plt.axhline(y=type_max_logp_iter[tp][1], color=color[tp], linestyle='dotted', label=lab)
 
 plt.xlabel("Iteration")
@@ -212,16 +182,16 @@ plt.tick_params(
     top=False,
     labelbottom=True)         # ticks along the top edge are off
 if data_src=='qed':
-	plt.savefig(path_to_figs+'/max_qed_iter_'+rt+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_max_qed_iter'+decoding_types[0]+'.png')
 else:
-	plt.savefig(path_to_figs+'/max_logp_iter_'+rt+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_max_logp_iter'+decoding_types[0]+'.png')
 ###################################################################
 # Average LogP of Iteration
 plt.cla()
 for i in range(len(types)):
 	tp = types[i]
 	lab = labels[i]
-	plt.errorbar(np.arange(start,end), type_logp_means[tp], yerr=type_logp_stds[tp], color=color[tp], linestyle='solid', label=lab +', Recursive Inference')
+	plt.errorbar(np.arange(start,end), type_logp_means[tp], yerr=type_logp_stds[tp], color=color[tp], linestyle='solid', label=lab +', Rec. Inf.')
 	plt.axhline(y=type_logp_means[tp][1], color=color[tp], linestyle='dotted', label=lab)
 
 plt.xlabel("Iteration")
@@ -243,17 +213,17 @@ plt.tick_params(
     top=False,
     labelbottom=True)         # ticks along the top edge are off
 if data_src=='qed':
-	plt.savefig(path_to_figs+'/avg_qed_'+rt+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_qed_'+decoding_types[0]+'.png')
 else:
-	plt.savefig(path_to_figs+'/avg_logp_'+rt+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_logp_'+decoding_types[0]+'.png')
 #####################################################################
 # Average LogP of best compound seen so far
 plt.cla()
 for i in range(len(types)):
 	tp = types[i]
 	lab = labels[i]
-	plt.errorbar(np.arange(start,end), type_optimal_logp_iter[tp], yerr=type_optimal_logp_iter_std[tp], color=color[tp], linestyle='solid', label=lab)
-	plt.axhline(y=type_optimal_logp_iter[tp][1], color=color[tp], linestyle='dotted', label=lab +', No Recursion')
+	plt.errorbar(np.arange(start,end), type_optimal_logp_iter[tp], yerr=type_optimal_logp_iter_std[tp], color=color[tp], linestyle='solid', label=lab +', Rec. Inf.')
+	plt.axhline(y=type_optimal_logp_iter[tp][1], color=color[tp], linestyle='dotted', label=lab)
 
 plt.xlabel("Iteration")
 if data_src=='qed':
@@ -274,7 +244,7 @@ plt.tick_params(
     top=False,
     labelbottom=True)         # ticks along the top edge are off
 if data_src=='qed':
-	plt.savefig(path_to_figs+'/avg_optimal_qed_'+rt+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_optimal_qed_'+decoding_types[0]+'.png')
 else:
-	plt.savefig(path_to_figs+'/avg_optimal_logp_'+rt+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_optimal_logp_'+decoding_types[0]+'.png')
 
