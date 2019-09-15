@@ -18,7 +18,7 @@ def remove_spaces(x):
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/src_train_900maxdiv_seeds/softmax_randtop3/toplogp'
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/src_train_900maxdiv_seeds/beam20/toplogp'
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/src_train_900maxdiv_seeds/beam20/toplogp'
-xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/src_train_900maxdiv_seeds/'
+xdir = '/tigress/fdamani/mol-edit-output/onmt-qed/preds/recurse_limit/src_train_900maxdiv_seeds/'
 #types = ['beam20', 'softmax_randtop2', 'softmax_randtop3', 'softmax_randtop4', 'softmax_randtop5']
 #labels = ['Beam', 'Rnd Top 2', 'Rnd Top 3', 'Rnd Top 4', 'Rnd Top 5']
 types = ['beam', 'softmax_randtop2', 'softmax_randtop5']

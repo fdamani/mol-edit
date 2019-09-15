@@ -40,17 +40,19 @@ def remove_spaces(x):
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/div_seeds/softmax_randtop10/toplogp'
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/src_train_900maxdiv_seeds/softmax_randtop5/toplogp'
 xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/src_train_900maxdiv_seeds'
-
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/src_valid/beam20/toplogp'
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/div_seeds/greedy'
 #types=['softmax_randtop5']
 #labels=['Rnd Top 5']
 #types = ['beam20', 'softmax_randtop2', 'softmax_randtop3', 'softmax_randtop4', 'softmax_randtop5']
-types = ['beam', 'softmax_randtop2', 'softmax_randtop5']
-labels = ['Beam', 'Rnd Top 2', 'Rnd Top 5']
-rank_types=['logp', 'maxdeltasim', 'maxseedsim', 'mindeltasim', 'minmolwt']
+#types = ['beam']#, 'softmax_randtop2', 'softmax_randtop5']
+#labels = ['Beam']#, 'Rnd Top 2', 'Rnd Top 5']
+types = ['beam']
+labels = ['Rnd Top 2']
+
+rank_types=['logp', 'maxdeltasim', 'maxseedsim', 'mindeltasim', 'minmolwt', 'qed']
 #rank_types=['logp', 'maxdeltasim']
-rt = rank_types[1]
+rt = rank_types[5]
 
 type_logp_means = {}
 type_logp_stds = {}
@@ -111,9 +113,9 @@ for tp in types:
 		logp_stds.append(np.std(local_logp))
 		prop_valid.append(len(local_logp)/float(X.shape[0]))
 		smiles_dict[num] = smiles
-		print(num, max_logp)
+		print(num, max_logp, np.mean(local_logp), np.std(local_logp))
 	
-
+	embed()
 	# save top 10 compounds
 	inds = np.argsort(optimal_logp)[-10:]
 	for ind in inds:

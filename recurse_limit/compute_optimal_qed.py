@@ -38,9 +38,10 @@ def remove_spaces(x):
 
 
 data_src = "qed"
+#data_src="logp04"
 #data_src = "logp04"
-seed="jin_test"
-#seed="src_train_900maxdiv_seeds"
+#seed="jin_test"
+seed="src_train_900maxdiv_seeds"
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/div_seeds/softmax_temp1/toplogp'
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/div_seeds/softmax_randtop10/toplogp'
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/src_train_900maxdiv_seeds/softmax_randtop5/toplogp'
@@ -53,9 +54,9 @@ xdir = '/tigress/fdamani/mol-edit-output/onmt-'+data_src+'/preds/recurse_limit/'
 #types = ['beam20', 'softmax_randtop2', 'softmax_randtop3', 'softmax_randtop4', 'softmax_randtop5']
 types = ['beam', 'softmax_randtop2', 'softmax_randtop5']
 labels = ['Beam', 'Rnd Top 2', 'Rnd Top 5']
-rank_types=['logp', 'maxdeltasim', 'maxseedsim', 'mindeltasim', 'minmolwt']
+rank_types=['logp', 'maxdeltasim', 'maxseedsim', 'mindeltasim', 'minmolwt', 'qed']
 #rank_types=['logp', 'maxdeltasim']
-rt = rank_types[1]
+rt = rank_types[4]
 
 type_logp_means = {}
 type_logp_stds = {}
@@ -72,7 +73,7 @@ for tp in types:
 	prop_valid = []
 	num_samples = []
 	start = 0
-	end = 8
+	end = 32
 	filenums = np.arange(start, end)
 	seeds = pd.read_csv(dr+'/'+str(0)+'.csv', header=None, skip_blank_lines=False)
 	optimal_logp = []
@@ -117,9 +118,7 @@ for tp in types:
 		prop_valid.append(len(local_logp)/float(X.shape[0]))
 		smiles_dict[num] = smiles
 		print(num, max_logp)
-	
-
-	# save top 10 compounds
+		# save top 10 compounds
 	inds = np.argsort(optimal_logp)[-10:]
 	for ind in inds:
 		logpvals = []
@@ -141,7 +140,6 @@ for tp in types:
 		if not os.path.exists(path_to_figs+'/cmpds'):
 			os.mkdir(path_to_figs+'/cmpds')
 		img.save(path_to_figs+'/cmpds/'+str(ind)+'.png')
-	
 	# save to dict
 	type_max_logp_iter[tp] = np.array(max_logp_iter)
 	type_optimal_logp_iter[tp] = np.array(optimal_logp_iter)
@@ -161,7 +159,7 @@ for i in range(len(types)):
 	lab = labels[i]
 	plt.plot(np.arange(start,end), type_max_logp_iter[tp], label=lab)
 plt.xlabel("Iteration")
-plt.ylabel("Max LogP")
+plt.ylabel("Max QED")
 plt.legend(loc="lower right")
 plt.tick_params(
     axis='x',          # changes apply to the x-axis
@@ -175,7 +173,7 @@ plt.tick_params(
     bottom=False,      # ticks along the bottom edge are off
     top=False,
     labelbottom=True)         # ticks along the top edge are off
-plt.savefig(path_to_figs+'/max_logp_iter_'+rt+'.png')
+plt.savefig(path_to_figs+'/max_qed_iter_'+rt+'.png')
 
 ###################################################################
 # Average LogP of Iteration
@@ -185,7 +183,7 @@ for i in range(len(types)):
 	lab = labels[i]
 	plt.errorbar(np.arange(start,end), type_logp_means[tp], yerr=type_logp_stds[tp], label=lab)
 plt.xlabel("Iteration")
-plt.ylabel("Mean LogP")
+plt.ylabel("Mean QED")
 plt.legend(loc="lower right")
 plt.tick_params(
     axis='x',          # changes apply to the x-axis
@@ -199,7 +197,7 @@ plt.tick_params(
     bottom=False,      # ticks along the bottom edge are off
     top=False,
     labelbottom=True)         # ticks along the top edge are off
-plt.savefig(path_to_figs+'/avg_logp_'+rt+'.png')
+plt.savefig(path_to_figs+'/avg_qed_'+rt+'.png')
 
 #####################################################################
 # Average LogP of best compound seen so far
@@ -209,7 +207,7 @@ for i in range(len(types)):
 	lab = labels[i]
 	plt.errorbar(np.arange(start,end), type_optimal_logp_iter[tp], yerr=type_optimal_logp_iter_std[tp], label=lab)
 plt.xlabel("Iteration")
-plt.ylabel("Mean Optimal LogP")
+plt.ylabel("Mean Optimal QED")
 plt.legend(loc="lower right")
 plt.tick_params(
     axis='x',          # changes apply to the x-axis
@@ -223,4 +221,4 @@ plt.tick_params(
     bottom=False,      # ticks along the bottom edge are off
     top=False,
     labelbottom=True)         # ticks along the top edge are off
-plt.savefig(path_to_figs+'/avg_optimal_logp_'+rt+'.png')
+plt.savefig(path_to_figs+'/avg_optimal_qed_'+rt+'.png')

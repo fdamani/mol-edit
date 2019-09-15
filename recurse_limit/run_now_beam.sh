@@ -29,11 +29,15 @@ if [ globalind == "5" ]
 then
 	rank_type="maxdeltasim"
 fi
+if [ globalind == "6" ]
+then
+	rank_type="qed"
+fi
 
 #property="logp04"
 property="qed"
-seed_type="jin_test"
-# seed_type="src_train_900maxdiv_seeds"
+#seed_type="jin_test"
+seed_type="src_train_900maxdiv_seeds"
 topk=2
 model_type="beam"
 # model_type="softmax_randtop${topk}"

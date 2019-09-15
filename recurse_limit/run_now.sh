@@ -28,11 +28,15 @@ if [ globalind == "5" ]
 then
 	rank_type="maxdeltasim"
 fi
-
+if [ globalind == "6" ]
+then
+	rank_type="qed"
+fi
 #property="logp04"
 property="qed"
-seed_type="jin_test"
-topk=2
+seed_type="src_train_900maxdiv_seeds"
+#seed_type="jin_test"
+topk=5
 model_type="softmax_randtop${topk}"
 seed_file="/tigress/fdamani/mol-edit-data/data/${property}/test_sets/selfies/${seed_type}.csv"
 
