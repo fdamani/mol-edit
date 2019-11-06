@@ -1,0 +1,2 @@
+[O] [=C] [Branch1_3] [#N] [C] [c] [c] [c] [c] [Branch1_3] [epsilon] [Cl] [c] [Branch1_3] [epsilon] [Cl] [c] [Ring1] [Branch1_3] [N] [C] [C] [C] [Branch1_3] [Branch2_3] [C] [N] [C] [C] [O] [C] [C] [Ring1] [Branch1_1] [C] [C] [Ring1] [O]
+[O] [=C] [Branch1_3] [#N] [c] [c] [c] [Branch1_3] [epsilon] [F] [c] [Branch1_3] [epsilon] [F] [c] [c] [Ring1] [Branch1_3] [Cl] [N] [C] [C] [N] [Branch1_3] [F] [C] [C] [c] [c] [c] [c] [c] [c] [Ring1] [Branch1_1] [C] [C] [Ring1] [=O]
