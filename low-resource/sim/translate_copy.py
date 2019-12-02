@@ -5,6 +5,7 @@ from __future__ import unicode_literals
 import sys
 sys.path.append("../..")
 sys.path.insert(0, '../../OpenNMT-py')
+
 import IPython
 from IPython import embed
 
@@ -70,7 +71,7 @@ class TranslatorClass:
                 if tgt is not None else repeat(None)
         
         shard_pairs = zip(src_shards, tgt_shards)
-        global_scores, global_sequences = [], []
+        global_scores, global_sequences, global_gold_scores = [], [], []
         for i, (src_shard, tgt_shard) in enumerate(shard_pairs):
             output = self.translator.translate(
                     src=src_shard,
@@ -80,10 +81,11 @@ class TranslatorClass:
                     # batch_type=self.opts.batch_type,
                     attn_debug=self.opts.attn_debug
                     )
-            scores, sequences = output[0], output[1]
+            scores, sequences, gold_scores = output[0], output[1], output[2]
             global_scores.extend(scores)
             global_sequences.extend(sequences)
-        return global_scores, global_sequences
+            global_gold_scores.extend(gold_scores)
+        return global_scores, global_sequences, global_gold_scores
 
 def _get_parser():
     parser = ArgumentParser(description='translate.py')
@@ -108,8 +110,8 @@ def translate(model,
                             random_sampling_topk=random_sampling_topk,
                             seed=seed)
     # translate
-    scores, preds = trans.translate(src, tgt)
-    return scores, preds
+    scores, preds, global_scores = trans.translate(src, tgt)
+    return scores, preds, global_scores
 
 def unroll(x, n):
     """turn a list of lists of length n into a single list
@@ -132,6 +134,6 @@ def split_list(x, n):
     return new_x
 
 if __name__ == "__main__":
-    # src = '/tigress/fdamani/exvitro/data/USPTO/MIT_mixed_augm/tgt-test10.txt'
-    # scores, sequences = translate(src)
+    src = '/tigress/fdamani/exvitro/data/USPTO/MIT_mixed_augm/tgt-test10.txt'
+    scores, sequences = translate(src)
     embed()

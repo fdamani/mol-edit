@@ -31,20 +31,22 @@ def clean(x):
 
 # src = pd.read_csv('/tigress/fdamani/mol-edit-data/data/logp04/src_train.csv', header=None).values
 # tgt = pd.read_csv('/tigress/fdamani/mol-edit-data/data/logp04/tgt_train.csv', header=None).values
-pairs = pd.read_csv('/tigress/fdamani/mol-edit-data/data/logp06/train_pairs.txt', sep=' ', header=None)
+
+pairs = pd.read_csv(sys.argv[1], sep=' ', header=None)
 pairs = pairs.sample(frac=1).reset_index(drop=True).values
 
-sim_thresh = .80
-sim_pairs = []
-for i in range(len(pairs)):
-	if sim(pairs[i][0], pairs[i][1]) > sim_thresh:
-		sim_pairs.append(pairs[i])
-pairs = np.array(sim_pairs)
+logp = False
+if logp:
+	sim_thresh = .80
+	sim_pairs = []
+	for i in range(len(pairs)):
+		if sim(pairs[i][0], pairs[i][1]) > sim_thresh:
+			sim_pairs.append(pairs[i])
+	pairs = np.array(sim_pairs)
 
-output_dir = '/tigress/fdamani/mol-edit-data/data/logp08'
+output_dir = sys.argv[2]
 num_samples = len(pairs)
 num_valid = int(.1*num_samples)
-embed()
 sims = []
 src = pairs[:,0]
 tgt = pairs[:,1]

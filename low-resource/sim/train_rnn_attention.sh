@@ -1,4 +1,4 @@
-python ../../OpenNMT-py/train.py -data /tigress/fdamani/mol-edit-data/data/logp06/onmt-data \
+python ../../OpenNMT-py/train.py -data /tigress/fdamani/mol-edit-data/data/drd2500/onmt-data \
 				-global_attention mlp \
 				-word_vec_size 600 \
 				-share_embeddings \
@@ -10,12 +10,12 @@ python ../../OpenNMT-py/train.py -data /tigress/fdamani/mol-edit-data/data/logp0
 				-dec_rnn_size 600 \
 				-label_smoothing 0.1 \
 				-rnn_type LSTM \
-				-save_model /tigress/fdamani/mol-edit-output/onmt-logp06/checkpoints/model-mlpattention/model \
-				-train_steps 100000 \
+				-save_model /tigress/fdamani/mol-edit-output/onmt-drd2500/checkpoints/no-transfer/model-mlpattention/model \
+				-train_steps 10000 \
 				-valid_steps 500 \
 				-batch_size 64 \
-				-save_checkpoint_steps 1000 \
-				-report_every 200 \
+				-save_checkpoint_steps 500 \
+				-report_every 500 \
 				-world_size 1 \
 				-gpu_ranks 0 \
 				-optim adam \
