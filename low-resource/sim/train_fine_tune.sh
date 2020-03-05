@@ -1,5 +1,5 @@
 python ../../OpenNMT-py/train.py -data /tigress/fdamani/mol-edit-data/data/qed1k/onmt-data \
-				-train_from /tigress/fdamani/mol-edit-output/onmt-qed1k/checkpoints/qed1k-logp/model-mlpattention/model_step_100000.pt \
+				-train_from /tigress/fdamani/mol-edit-output/onmt-drd2500/checkpoints/drd2500-qed/model-mlpattention/model_step_100000.pt \
 				-global_attention mlp \
 				-word_vec_size 600 \
 				-share_embeddings \
@@ -11,7 +11,7 @@ python ../../OpenNMT-py/train.py -data /tigress/fdamani/mol-edit-data/data/qed1k
 				-dec_rnn_size 600 \
 				-label_smoothing 0.1 \
 				-rnn_type LSTM \
-				-save_model /tigress/fdamani/mol-edit-output/onmt-qed1k/checkpoints/fine-tuned/model-mlpattention/model \
+				-save_model /tigress/fdamani/mol-edit-output/onmt-drd2500/checkpoints/fine-tuned/model-mlpattention/model \
 				-reset_optim all \
 				-train_steps 100000 \
 				-valid_steps 100 \

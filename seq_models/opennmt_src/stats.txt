@@ -1,0 +1,45 @@
+prediction mean sim:  0.3978482328548588 
+true mean sim:  0.444198577499178 
+percent valid:  0.8716 
+src mean qed:  0.7572427331878128 
+pred mean qed:  0.910927188565943 
+tgt mean qed:  0.9180774700811767 
+percent greater than .4 sim:  0.5566
+
+
+
+prediction mean sim:  0.40531533780181084 
+true mean sim:  0.44421003741184684 
+percent valid:  0.9078 
+src mean qed:  0.757330304964976 
+pred mean qed:  0.9116390742769128 
+tgt mean qed:  0.9182372705529511 
+percent greater than .4 sim:  0.7151354923992069
+
+prediction mean sim:  0.4206249593790447 
+true mean sim:  0.4441333013748677 
+percent valid:  0.9354 
+src mean qed:  0.7574881798983151 
+pred mean qed:  0.9147700939630531 
+tgt mean qed:  0.9181868697169121 
+percent greater than .4 sim:  0.796023091725465
+
+
+===beam = 5====
+prediction mean sim:  0.4239983935126594 
+true mean sim:  0.44391004583924804 
+percent valid:  0.9656 
+src mean qed:  0.7573756543941023 
+pred mean qed:  0.915990889894901 
+tgt mean qed:  0.9181664378712981 
+percent greater than .4 sim:  0.8082021541010771
+
+
+===beam = 10 =====
+prediction mean sim:  0.42392114694710015 
+true mean sim:  0.4439147837551224 
+percent valid:  0.966 
+src mean qed:  0.7573819537318376 
+pred mean qed:  0.9159952691633362 
+tgt mean qed:  0.9181606573261067 
+percent greater than .4 sim:  0.8076604554865424

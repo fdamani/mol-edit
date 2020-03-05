@@ -4,7 +4,7 @@
 from __future__ import unicode_literals
 import sys
 sys.path.append("../..")
-sys.path.insert(0, '../../OpenNMT-py')
+sys.path.insert(0, '../OpenNMT-py')
 import IPython
 from IPython import embed
 

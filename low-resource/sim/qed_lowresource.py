@@ -285,7 +285,6 @@ output_dir = '/tigress/fdamani/mol-edit-output/onmt-logp04/output'
 prop='logp04'
 seed_type= 'complete_dataset_selfies.csv'
 
-
 full_qed_model = '/tigress/fdamani/mol-edit-output/onmt-qed/checkpoints/train_valid_share/model-mlpattention/model-brnnenc-rnndec-2layer-600wordembed-600embed-shareembedding-mlpattention-adamoptim_step_99000.pt'
 full_logp_model = '/tigress/fdamani/mol-edit-output/onmt-logp04/checkpoints/train_valid_share/model-mlpattention/model-brnnenc-rnndec-2layer-600wordembed-600embed-shareembedding-mlpattention-adamoptim_step_99000.pt'
 joint_qed_logp_model = '/tigress/fdamani/mol-edit-output/onmt-qed1k/checkpoints/qed1k-logp/model-mlpattention/model_step_100000.pt'
@@ -295,6 +294,13 @@ low_resource_qed_model = '/tigress/fdamani/mol-edit-output/onmt-qed1k/checkpoint
 model_objs = [full_qed_model, full_logp_model, joint_qed_logp_model, fined_tuned_qed_model, low_resource_qed_model]
 model_objs_names = ['full qed', 'full logp', 'full logp and 1k qed', 'fine tuned on qed', '1k qed']
 
+joint_drd2_qed_model = '/tigress/fdamani/mol-edit-output/onmt-drd21k/checkpoints/drd21k-qed/model-mlpattention/model_step_90000.pt'
+fine_tuned_drd2_model = '/tigress/fdamani/mol-edit-output/onmt-drd2500/checkpoints/fine-tuned/model-mlpattention/model_step_500.pt'
+low_resource_drd2_model = '/tigress/fdamani/mol-edit-output/onmt-drd25k/checkpoints/no-transfer/model-mlpattention/model_step_1000.pt'
+model_objs = [joint_drd2_qed_model, fine_tuned_drd2_model, low_resource_drd2_model]
+model_objs_names = ['full qed and 1k drd2', 'fine tuned', '1k drd2']
+model_objs = [fine_tuned_drd2_model]
+model_objs_names = ['fined tuned']
 #qed_model = '/tigress/fdamani/mol-edit-output/onmt-qed5k/checkpoints/no-transfer/model-mlpattention/model_step_100000.pt'
 seed_file = '/tigress/fdamani/mol-edit-data/data/qed/test_sets/selfies/jin_test.csv'
 #data
@@ -303,7 +309,7 @@ x = pd.read_csv(seed_file, header=None, skip_blank_lines=False).values
 score = ['drd2', 'logp04', 'maxsim', 'qed']
 score_dict = {'drd2': drd2, 'log04': logp, 'drd2': drd2}
 translate_types = ['sd', 'beam']
-score_func = score[1]
+score_func = score[0]
 translate_type = translate_types[1]
 k=1
 num_samples = 800

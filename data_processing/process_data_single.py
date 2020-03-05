@@ -1,6 +1,6 @@
 """Take as input test.txt file.
 	
-- separate src/target
+- input is single selfies per line
 - convert to selfies
 - save src/target separately with space-separated tokens, one compound per line
 
@@ -24,7 +24,6 @@ def read_data(file, selfies=True):
 	src = pd.DataFrame(smiles_to_selfies(data[0])).dropna()
 	return src
 
-
 def smiles_to_selfies(x, token_sep=True):
 	"""smiles to selfies
 	if token_sep=True -> return spaces between each token"""
@@ -43,6 +42,6 @@ if __name__ == '__main__':
 	file = sys.argv[1]
 	output_dir = sys.argv[2]
 	src = read_data(file)
-
+	fname = file.split('/')[-1]
 	# save to dict
-	src.to_csv(output_dir+'/src_baseline_test.csv',index=None, header=None)
+	src.to_csv(output_dir+'/'+fname,index=None, header=None)

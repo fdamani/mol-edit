@@ -18,15 +18,26 @@ def similarity(a, b):
 	'''https://github.com/wengong-jin/iclr19-graph2graph/blob/master/props/properties.py'''
 
 	if a is None or b is None: 
-		return 0.0
+		return None
 	amol = Chem.MolFromSmiles(a)
 	bmol = Chem.MolFromSmiles(b)
 	if amol is None or bmol is None:
-		return 0.0
+		return None
 
 	fp1 = AllChem.GetMorganFingerprintAsBitVect(amol, 2, nBits=2048, useChirality=False)
 	fp2 = AllChem.GetMorganFingerprintAsBitVect(bmol, 2, nBits=2048, useChirality=False)
 	return DataStructs.TanimotoSimilarity(fp1, fp2)
+
+def mgn_fgpt(a):
+
+	if a is None:
+		return 0.0
+	amol = Chem.MolFromSmiles(a)
+	if amol is None:
+		return 0.0
+
+	fp = AllChem.GetMorganFingerprintAsBitVect(amol, 2, nBits=2048, useChirality=False)
+	return fp
 
 def population_diversity(x):
 	'''take a set of compounds compute pairwise diversity measures
@@ -35,7 +46,9 @@ def population_diversity(x):
 	diversity = []
 	for i in range(len(x)):
 		for j in range(len(x)):
-			if i != j:
+			if j > i:
+				if similarity(x[i], x[j]) is None:
+					continue
 				diversity.append(1.0 - similarity(x[i], x[j]))
 	return diversity
 

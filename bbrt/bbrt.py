@@ -1,3 +1,16 @@
+"""
+author: farhan damani
+
+This file runs the BBRT algorithm.
+----------
+Example command:
+python bbrt.py --model _path_to_onmt_model  --src _path_to_selfies_src_file --gpu 0
+----------
+
+- parameters are set at the bottom of this file instead of adding to argparse, due to conflicts with onmt api.
+- must specify model and src path at command line and everything else at the bottom of this file.
+
+"""
 import sys
 sys.path.insert(0, '..')
 sys.path.insert(0, '../data_analysis')
@@ -8,7 +21,6 @@ from selfies import encoder, decoder
 from IPython import embed
 import mmpa
 import properties
-import argparse
 
 import matplotlib
 matplotlib.use('Agg')
@@ -29,7 +41,7 @@ from rdkit.SimDivFilters.rdSimDivPickers import MaxMinPicker
 
 def return_diverse_subset(X, num, max_diverse=True):
 	fps = []
-	for i in range(10000):
+	for i in range(100):
 		fps.append(mmpa.mgn_fgpt(clean(X[i][0])))
 	def distij(i,j,fps=fps):
 		'''set "dist" to be similarity'''
@@ -146,7 +158,20 @@ def remove_none(x):
 	return [sx for sx in x if sx is not None]
 
 class BBRT:
-	def __init__(self, translate_type, num_iters, model, src, k, n_best, num_samples, score_func, beam_size=20):
+	def __init__(self, translate_type, num_iters, model, src, k, n_best, num_samples, score_func, output_dir, beam_size=20):
+		"""
+			translate_type: 'beam' or 'sd'
+			num_iters: num BBRT iters
+			model: path to model
+			src: list of space-separated selfies sequences
+			k: top k sampler
+			n_best: for each translation, output n_best sequences
+			num_samples: number of samples to propagate to next iteration, default is len(src)
+			score_func: name of property to rank by
+			output_dir: path to output directory
+			beam_size: beam search beam size
+		"""
+
 		self.translate_type = translate_type
 		self.num_iters = num_iters
 		self.model = model
@@ -160,6 +185,7 @@ class BBRT:
 		self.std_dev_pop = []
 		self.max_pop = []
 		self.beam_size = beam_size
+		self.output_dir = output_dir
 
 		props = prop_array(clean_array(self.src), prop=self.score_func)
 		self.mean_pop.append(np.mean(props))
@@ -172,7 +198,8 @@ class BBRT:
 		intermed_src = self.src
 		for i in range(self.num_iters):
 			print('iter: ', i)
-			preds = self.translate_and_rank(intermed_src)
+			preds = self.translate_and_rank(intermed_src, i)
+			pd.DataFrame(clean_array(preds)).to_csv(self.output_dir+'/scored_preds_'+str(i)+'.csv', index=None, header=None)
 			
 			self.total_preds.append(preds)
 			intermed_src = remove_empty_strings(preds)
@@ -189,16 +216,26 @@ class BBRT:
 			if self.max_pop[i] > maxSoFar:
 				maxSoFar = self.max_pop[i]
 			self.max_so_far.append(maxSoFar)
-	def translate_and_rank(self, intermed_src):
+	def translate_and_rank(self, intermed_src, i):
 		if self.translate_type=='sd':
 			preds = self.sd_topk(intermed_src)
 		elif self.translate_type=='beam':
 			preds = self.beam_search(src=intermed_src)
-
+		
+		# save all translated compounds
+		smiles_preds = [clean_array(preds[i]) for i in range(len(preds))]
+		pd.DataFrame(smiles_preds).T.to_csv(self.output_dir+'/prescored_preds_'+str(i)+'.csv', index=None, header=None)
 		preds = self.rank(preds, clean_array(intermed_src))
 		return preds
 
 	def rank(self, x, prev_x=None):
+		"""input: x, num sampled sequences x seed sequences
+		for each seed sequence
+			- evaluate property on num sampled sequences
+			- rank and return top sequence and value
+			- append top candidate
+		return top candidates of length seed sequences
+		"""
 		top_cands = []
 		for i in range(num_samples):
 			props = prop_array(clean_array(x[:, i]), prop=self.score_func, prev_x=prev_x[i])
@@ -211,9 +248,8 @@ class BBRT:
 		return np.array(preds).T
 
 	def sd_topk(self, src):
-		"""simplest method
-		for each seed 1 to n, make k copies concatenate k*n then pass through translate
-		then collapse back to n x k, rank by k return top 1 in 1 to k 
+		"""sample once per sequence, repeat.
+		return num sampled sequences x num seeds
 		"""
 		total_preds=[]
 		for i in range(self.n_best):
@@ -221,85 +257,37 @@ class BBRT:
 			total_preds.append(preds)
 		return np.array(total_preds).squeeze(-1)
 
-output_dir = '/tigress/fdamani/mol-edit-output/onmt-logp04/output'
-prop='logp04'
+# output directory, model paths, and seed file
+# output_dir = '/tigress/fdamani/mol-edit-output/onmt-logp04/output'
+output_dir = '/tigress/fdamani/mol-edit-output/onmt-logp04/test'
+
 logp_model = '/tigress/fdamani/mol-edit-output/onmt-logp04/checkpoints/train_valid_share/model-mlpattention/model-brnnenc-rnndec-2layer-600wordembed-600embed-shareembedding-mlpattention-adamoptim_step_99000.pt'
 drd2_model = '/tigress/fdamani/mol-edit-output/onmt-drd2_short/checkpoints/model-mlpattention/model_step_100000.pt'
 seed_file = '/tigress/fdamani/mol-edit-data/data/logp04/complete_dataset_selfies.csv'
 
-#data
-x = pd.read_csv(seed_file, header=None, skip_blank_lines=False).values
-x_maxdiv = return_diverse_subset(x,100,True)
-x_mindiv = return_diverse_subset(x,100,False)
-
-#params
-if prop=='logp04':
-	model = logp_model
-if prop=='drd2':
-	model = drd2_model
-
-score = ['drd2', 'logp04', 'maxsim', 'qed']
-score_dict = {'drd2': drd2, 'log04': logp, 'drd2': drd2}
-translate_types = ['sd', 'beam']
-score_func = score[1]
-translate_type = translate_types[0]
-k=5
-num_samples = 10
-# src = x_div
-n_best=5
-num_iters = 3
-
-parser = argparse.ArgumentParser(description='BBRT')
-parser.add_argument('--output_dir', type=str, default=output_dir,
-                    help='Output directory')
-parser.add_argument('--model', type=str, default=logp_model,
-                    help='Path to model file')
-parser.add_argument('--property', type=str, default='logp04',
-                    help='Property to rank outputs by. Currently supporting drd2, logp04, drd2')
-parser.add_argument('--seed_file', type=str, default='/tigress/fdamani/mol-edit-data/data/logp04/complete_dataset_selfies.csv',
-                    help='Path to seed compounds')
-parser.add_argument('--num_seeds', type=str, default=100,
-                    help='Number of seed compounds for BBRT.')
-parser.add_argument('--iters', type=str, default=5,
-                    help='Number of BBRT iterations.')
-parser.add_argument('--n_best', type=str, default=5,
-                    help='Number of sequences decoded')
-parser.add_argument('--beam_size', type=str, default=10,
-                    help='Beam size')
-parser.add_argument('--topk', type=str, default=5,
-                    help='Top k sampling.')
-parser.add_argument('--greedy', type=bool, default=False)
-
-args = parser.parse_args()
-
-# data
-x = pd.read_csv(seed_file, header=None, skip_blank_lines=False).values
-x_maxdiv = return_diverse_subset(x, args.num_seeds, True)
-# x_mindiv = return_diverse_subset(x, args.num_seeds, False)
 
 # parameters
-model = args.model
+model = logp_model # path to model file
+src = '/tigress/fdamani/mol-edit-data/data/logp04/complete_dataset_selfies.csv' # path to src file
+prop = 'logp04' # Property to rank outputs by. Currently supporting drd2, logp04, qed'
+num_seeds = 10 # Number of seed compounds for BBRT.
+num_samples = num_seeds # we assume num samples that are propagated are the same number as the input seeds (e.g. one per seed)
+n_best = 5 # Number of sequences decoded
+num_iters = 3 # Number of BBRT iterations.
+k = 5 # top k sampling
+isGreedy = False # true: greedy decoding with beam search, false: top k sampler
+beam_size = 10 # beam search size
+
 score = ['drd2', 'logp04', 'maxsim', 'qed']
 score_dict = {'drd2': drd2, 'log04': logp, 'drd2': drd2}
 translate_types = ['sd', 'beam']
-score_func = args.property
-translate_type = 'beam' if args.greedy else 'sd' 
-k = args.topk
-num_samples = 10
-n_best = args.n_best
-num_iters = args.iters
+score_func = prop
+translate_type = 'beam' if isGreedy else 'sd' 
 
+# data
+x = pd.read_csv(src, header=None, skip_blank_lines=False).values
+x_maxdiv = return_diverse_subset(x, num_seeds, True)
 
-
-
-
-
-bbrt_maxdiv = BBRT(translate_type, num_iters, model, x_maxdiv, k, n_best, num_samples, score_func)
+bbrt_maxdiv = BBRT(translate_type, num_iters, model, x_maxdiv, k, n_best, num_samples, score_func, output_dir)
 bbrt_maxdiv.run()
-
-bbrt_mindiv = BBRT(translate_type, num_iters, model, x_mindiv, k, n_best, num_samples, score_func)
-bbrt_mindiv.run()
-
-
-embed()
 	

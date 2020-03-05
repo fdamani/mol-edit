@@ -46,7 +46,10 @@ seed="src_train_900maxdiv_seeds"
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/div_seeds/softmax_temp1/toplogp'
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/div_seeds/softmax_randtop10/toplogp'
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/src_train_900maxdiv_seeds/softmax_randtop5/toplogp'
-xdir = '/tigress/fdamani/mol-edit-output/onmt-'+data_src+'/preds/recurse_limit/'+seed
+#xdir = '/tigress/fdamani/mol-edit-output/onmt-'+data_src+'/preds/recurse_limit/'+seed
+#xdir = '/tigress/fdamani/mol-edit-data/results_pt_1/recursive_g2g/src_train_900maxdiv_seeds/logp04'
+xdir = '/tigress/fdamani/mol-edit-data/SELFIES_seq2seq/recursive_g2g/src_train_900maxdiv_seeds/logp04'
+
 
 def property_func(x):
 	if data_src=='logp04':
@@ -70,8 +73,12 @@ def property_func(x):
 #types = ['beam20', 'softmax_randtop2', 'softmax_randtop3', 'softmax_randtop4', 'softmax_randtop5']
 decoding_types = ['softmax_randtop5']
 #labels = ['Beam', 'Rnd Top 2', 'Rnd Top 5']
-types=['logp', 'maxdeltasim', 'maxseedsim', 'minmolwt']#, 'qed']
+#types=['logp', 'maxdeltasim', 'maxseedsim', 'minmolwt']#, 'qed']
+#labels=['logP', 'Max Pairwise Sim', 'Max Seed Sim', 'Min Mol Wt']
+
+types = ['logp', 'max_delta_sim', 'max_init_sim', 'min_mw']
 labels=['logP', 'Max Pairwise Sim', 'Max Seed Sim', 'Min Mol Wt']
+selfies=False
 #rank_types=['logp', 'maxdeltasim']
 #rt = rank_types[3]
 #tp = types[0]
@@ -84,15 +91,16 @@ type_optimal_logp_iter = {}
 type_optimal_logp_iter_std = {}
 type_max_logp_iter = {}
 for tp in types:
-	dr = xdir+'/'+decoding_types[0]+'/'+tp
+	dr = xdir+'/'+tp
+	#dr = xdir+'/'+decoding_types[0]+'/'+tp
 	logp_means = []
 	logp_stds = []
 	prop_valid = []
 	num_samples = []
 	start = 0
-	end = 25 #8, 28
+	end = 5 #8, 28
 	filenums = np.arange(start, end)
-	seeds = pd.read_csv(dr+'/'+str(0)+'.csv', header=None, skip_blank_lines=False)
+	seeds = pd.read_csv(dr+'/seeds_0'+str(0)+'.csv', header=None, skip_blank_lines=False)
 	optimal_logp = []
 	optimal_logp_iter = []
 	optimal_logp_iter_std = []
@@ -101,14 +109,18 @@ for tp in types:
 	smiles_dict = {}
 	for num in filenums:
 		try:
-			X = pd.read_csv(dr+'/'+str(num)+'.csv', header=None, skip_blank_lines=False)
+			X = pd.read_csv(dr+'/best_cmpds_0'+str(num)+'.csv', header=None, skip_blank_lines=False)
 		except:
 			break
 		smiles = []
 		local_logp=[]
 		for i in range(X.shape[0]):
-			sx = decoder(remove_spaces(''.join(X.iloc[i])))
-			x_seed = decoder(remove_spaces(''.join(seeds.iloc[i])))
+			if selfies:
+				sx = decoder(remove_spaces(''.join(X.iloc[i])))
+				x_seed = decoder(remove_spaces(''.join(seeds.iloc[i])))
+			else:
+				sx = X.iloc[i].values[0]
+				x_seed = seeds.iloc[i].values[0]
 			try:
 				val = property_func(sx)
 			except:
@@ -145,12 +157,14 @@ for tp in types:
 	type_logp_means[tp] = np.array(logp_means)
 	type_logp_stds[tp] = np.array(logp_stds)
 	type_prop_valid[tp] = np.array(prop_valid)
-
 ###################################################################
 #types=['logp', 'maxdeltasim', 'maxseedsim', 'minmolwt']
 
 color = {'logp': sns.xkcd_rgb["pale red"], 'maxdeltasim': sns.xkcd_rgb["medium green"], 'maxseedsim': sns.xkcd_rgb["denim blue"],
 		'minmolwt': sns.xkcd_rgb["medium purple"], 'qed': sns.xkcd_rgb["medium brown"]}
+color = {'logp': sns.xkcd_rgb["pale red"], 'max_delta_sim': sns.xkcd_rgb["medium green"], 'max_init_sim': sns.xkcd_rgb["denim blue"],
+		'min_mw': sns.xkcd_rgb["medium purple"], 'qed': sns.xkcd_rgb["medium brown"]}
+
 path_to_figs=xdir+'/figs'
 if not os.path.exists(path_to_figs):
 	os.mkdir(path_to_figs)
@@ -182,9 +196,9 @@ plt.tick_params(
     top=False,
     labelbottom=True)         # ticks along the top edge are off
 if data_src=='qed':
-	plt.savefig(path_to_figs+'/ranking_strat_comp_max_qed_iter'+decoding_types[0]+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_max_qed_iter'+decoding_types[0]+'.png', dpi=1200)
 else:
-	plt.savefig(path_to_figs+'/ranking_strat_comp_max_logp_iter'+decoding_types[0]+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_max_logp_iter'+decoding_types[0]+'.png', dpi=1200)
 ###################################################################
 # Average LogP of Iteration
 plt.cla()
@@ -213,9 +227,9 @@ plt.tick_params(
     top=False,
     labelbottom=True)         # ticks along the top edge are off
 if data_src=='qed':
-	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_qed_'+decoding_types[0]+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_qed_'+decoding_types[0]+'.png', dpi=1200)
 else:
-	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_logp_'+decoding_types[0]+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_logp_'+decoding_types[0]+'.png', dpi=1200)
 #####################################################################
 # Average LogP of best compound seen so far
 plt.cla()
@@ -244,7 +258,7 @@ plt.tick_params(
     top=False,
     labelbottom=True)         # ticks along the top edge are off
 if data_src=='qed':
-	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_optimal_qed_'+decoding_types[0]+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_optimal_qed_'+decoding_types[0]+'.png', dpi=1200)
 else:
-	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_optimal_logp_'+decoding_types[0]+'.png')
+	plt.savefig(path_to_figs+'/ranking_strat_comp_avg_optimal_logp_'+decoding_types[0]+'.png', dpi=1200)
 

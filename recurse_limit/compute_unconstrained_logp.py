@@ -25,22 +25,28 @@ import properties
 def remove_spaces(x):
 	return x.replace(" ", "")
 
-xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/div_seeds/greedy'
+#xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/div_seeds/greedy'
+xdir = '/tigress/fdamani/mol-edit-data/results_pt_1/recursive_g2g/src_train_900maxdiv_seeds/logp04/logp'
 logp_means = []
 logp_stds = []
 prop_valid = []
 num_samples = []
 start = 0
-end = 12
+end = 5
+selfies=False
 filenums = np.arange(start, end)
-seeds = pd.read_csv(xdir+'/'+str(0)+'.csv', header=None, skip_blank_lines=False)
+seeds = pd.read_csv(xdir+'/seeds_0'+str(0)+'.csv', header=None, skip_blank_lines=False)
 for num in filenums:
-	X = pd.read_csv(xdir+'/'+str(num)+'.csv', header=None, skip_blank_lines=False)
+	X = pd.read_csv(xdir+'/best_cmpds_0'+str(num)+'.csv', header=None, skip_blank_lines=False)
 	smiles = []
 	local_logp=[]
 	for i in range(X.shape[0]):
-		sx = decoder(remove_spaces(''.join(X.iloc[i])))
-		x_seed = decoder(remove_spaces(''.join(seeds.iloc[i])))
+		if selfies:
+			sx = decoder(remove_spaces(''.join(X.iloc[i])))
+			x_seed = decoder(remove_spaces(''.join(seeds.iloc[i])))
+		else:
+			sx = X.iloc[i].values[0]
+			x_seed = seeds.iloc[i].values[0]
 		val = properties.penalized_logp(sx)
 		x_seed_val = properties.penalized_logp(x_seed)
 		if num == 0:

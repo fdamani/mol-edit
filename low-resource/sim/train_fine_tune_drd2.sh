@@ -1,0 +1,24 @@
+python ../../OpenNMT-py/train.py -data /tigress/fdamani/mol-edit-data/data/drd25k/onmt-data \
+				-train_from /tigress/fdamani/mol-edit-output/onmt-drd25k/checkpoints/drd25k-qed/model-mlpattention/model_step_90000.pt \
+				-global_attention mlp \
+				-word_vec_size 600 \
+				-share_embeddings \
+				-encoder_type brnn \
+				-decoder_type rnn \
+				-enc_layers 2 \
+				-dec_layers 2 \
+				-enc_rnn_size 600 \
+				-dec_rnn_size 600 \
+				-label_smoothing 0.1 \
+				-rnn_type LSTM \
+				-save_model /tigress/fdamani/mol-edit-output/onmt-drd25k/checkpoints/fine-tuned/model-mlpattention/model \
+				-reset_optim all \
+				-train_steps 100000 \
+				-valid_steps 50 \
+				-batch_size 64 \
+				-save_checkpoint_steps 100 \
+				-report_every 50 \
+				-world_size 1 \
+				-gpu_ranks 0 \
+				-optim adam \
+				-learning_rate 0.001

@@ -60,8 +60,6 @@ for i in range(X_train.shape[0]):
 	if sx not in train_smiles:
 		train_logp.append(property_func(sx))
 		train_smiles.append(sx)
-	if i % 1000 ==0:
-		print(i)
 train_logp = np.array(train_logp)
 train_smiles = np.array(train_smiles)
 train_sorted_inds = np.argsort(train_logp)[::-1]
@@ -74,8 +72,13 @@ init_seeds = ['jin_test', 'src_train_900maxdiv_seeds']
 decoding_methods = ['beam', 'softmax_randtop2', 'softmax_randtop5']
 rank_types = ['logp', 'maxdeltasim', 'mindeltasim', 'minmolwt']
 
+# init_seeds = ['src_train_900maxdiv_seeds']
+# decoding_methods = ['beam']
+# rank_types = ['logp', 'maxdeltasim']
+
+
 xdir = '/tigress/fdamani/mol-edit-output/onmt-' + target_prop + '/preds/recurse_limit'
-num_files = 8
+num_files = 3
 smiles = []
 prop_val = []
 dups = 0
@@ -131,15 +134,16 @@ if not os.path.exists(path_to_figs):
 	os.mkdir(path_to_figs)
 # pop div plot
 plt.cla()
-plt.hist(top100_div, color=color[0], label="Candidates")
-plt.hist(top100_train_div, color=color[2], label="Training")
+plt.hist(top100_div, color=color[2], bins=40, label="Candidates")
+plt.hist(top100_train_div, color=color[0], bins=40, label="Training")
 plt.legend(loc='upper left')
-plt.savefig(xdir+'/figs/top100'+target_prop+'_pop_div.png', dpi=600)
+plt.savefig(xdir+'/figs/top100'+target_prop+'_pop_div.png', dpi=1200)
 ########################
 # top 100 logp plot
 # compute logp of top 100 from ZINC
 plt.cla()
-plt.hist(top100_logp, color=color[0], label="Candidates")
-plt.hist(top100_train_logp, color=color[2], label="Training")
+plt.hist(top100_logp, color=color[2], bins=40, label="Candidates")
+plt.hist(top100_train_logp, color=color[0], bins=40, label="Top 100 Training")
+#plt.hist(train_logp, color=color[1], label="Full Training Dist.")
 plt.legend(loc='upper left')
-plt.savefig(xdir+'/figs/top100' + target_prop +'_hist.png', dpi=600)
+plt.savefig(xdir+'/figs/top100' + target_prop +'_hist.png', dpi=1200)

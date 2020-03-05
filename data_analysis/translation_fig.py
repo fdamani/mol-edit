@@ -42,6 +42,6 @@ for file in os.listdir(src_dir):
 		img.save(output_dir+"/output_figs/"+name+"_src.png")
 
 		# save tgt mols
-		img = Draw.MolsToGridImage(tgt_mols, molsPerRow=4, subImgSize=(500,500), legends=tgt_legend)
+		img = Draw.MolsToGridImage(tgt_mols, molsPerRow=5, subImgSize=(500,500), legends=tgt_legend)
 		img.save(output_dir+"/output_figs/"+name+"_tgt.png")
 	print(file)

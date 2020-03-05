@@ -75,7 +75,8 @@ if __name__ == '__main__':
 	#num_test = 360.0
 	num_test = 5000.0
 	#num_test = 50.0
-	percent_test = float(num_test / src.shape[0])
+	#percent_test = float(num_test / src.shape[0])
+	percent_test = .1
 	if test:
 		percent_train = 1 - 2 * percent_test
 	else:

@@ -38,7 +38,7 @@ def remove_spaces(x):
 	return x.replace(" ", "")
 
 
-data_src = "qed"
+data_src = "logp04"
 #data_src="logp04"
 #data_src = "logp04"
 #seed="jin_test"
@@ -47,6 +47,7 @@ seed="src_train_900maxdiv_seeds"
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/div_seeds/softmax_randtop10/toplogp'
 #xdir = '/tigress/fdamani/mol-edit-output/onmt-logp04/preds/recurse_limit/src_train_900maxdiv_seeds/softmax_randtop5/toplogp'
 xdir = '/tigress/fdamani/mol-edit-output/onmt-'+data_src+'/preds/recurse_limit/'+seed
+xdir = '/tigress/fdamani/mol-edit-data/results_pt_1/recursive_g2g/src_train_900maxdiv_seeds/logp04/'
 
 def property_func(x):
 	if data_src=='logp04':
@@ -68,11 +69,13 @@ def property_func(x):
 #types=['softmax_randtop5']
 #labels=['Rnd Top 5']
 #types = ['beam20', 'softmax_randtop2', 'softmax_randtop3', 'softmax_randtop4', 'softmax_randtop5']
-types = ['beam', 'softmax_randtop2', 'softmax_randtop5']
-labels = ['Beam', 'Rnd Top 2', 'Rnd Top 5']
+#types = ['beam', 'softmax_randtop2', 'softmax_randtop5']
+#labels = ['Beam', 'Rnd Top 2', 'Rnd Top 5']
+types = ['Greedy']
 rank_types=['logp', 'maxdeltasim', 'maxseedsim', 'mindeltasim', 'minmolwt', 'qed']
+rank_types = ['logp', 'max_delta_sim', 'max_init_sim', 'min_delta_sim', 'min_mw', 'qed']
 #rank_types=['logp', 'maxdeltasim']
-rt = rank_types[3]
+rt = rank_types[2]
 
 type_logp_means = {}
 type_logp_stds = {}
@@ -89,7 +92,7 @@ for tp in types:
 	prop_valid = []
 	num_samples = []
 	start = 0
-	end = 25 #8, 28
+	end = 10 #8, 28
 	filenums = np.arange(start, end)
 	seeds = pd.read_csv(dr+'/'+str(0)+'.csv', header=None, skip_blank_lines=False)
 	optimal_logp = []
@@ -138,7 +141,7 @@ for tp in types:
 		smiles_dict[num] = smiles
 		print(num, max_logp)
 		# save top 10 compounds
-	inds = np.argsort(optimal_logp)#[-20:]
+	inds = np.argsort(optimal_logp)[-20:]
 	for ind in inds:
 		logpvals = []
 		mols = []

@@ -51,7 +51,8 @@ src = pd.read_csv(sys.argv[1], header=None)
 training_src = pd.read_csv(sys.argv[2], header=None)
 training_tgt = pd.read_csv(sys.argv[3], header=None)
 preds = pd.read_csv(sys.argv[4], header=None, skip_blank_lines=False)
-n_best = 60
+second_iter_seeds = pd.read_csv(sys.argv[5], header=None, skip_blank_lines=False)
+n_best = 20
 
 
 num_evaluate = src.shape[0]
@@ -78,6 +79,10 @@ scaffold_val=-1
 prop_unique_scaffolds_per_seed = []
 prop_rgroup_edits = []
 prop_scaffold_edits = []
+mean_sa, max_sa = [], []
+src_sa= []
+training_tgt_sa = []
+second_iter_seeds_sa= []
 
 mean_src_num_h_acceptors, mean_tgt_num_h_acceptors, mean_src_num_h_donors, \
 	mean_tgt_num_h_donors, mean_src_num_rotatable, mean_tgt_num_rotatable = [], [], [], [], [], []
@@ -170,6 +175,8 @@ for i in range(0, n_best*num_evaluate, n_best):
 	# compute other distributional stats, num rotatable bonds, num hbond acceptors, num hbond donors
 	src_num_h_acceptors, tgt_num_h_acceptors, src_num_h_donors, tgt_num_h_donors = [], [], [], []
 	src_num_rotatable, tgt_num_rotatable = [], []
+	local_mean_sa, local_max_sa = [], 0
+	local_src_sa = []
 	for j in range(len(cand_sim_inds)):
 		s,t = batch[cand_sim_inds[j]]
 		mol_s = Chem.MolFromSmiles(s)
@@ -180,6 +187,23 @@ for i in range(0, n_best*num_evaluate, n_best):
 		tgt_num_h_donors.append(rdkit.Chem.Lipinski.NumHDonors(mol_t))
 		src_num_rotatable.append(rdkit.Chem.Lipinski.NumRotatableBonds(mol_s))
 		tgt_num_rotatable.append(rdkit.Chem.Lipinski.NumRotatableBonds(mol_t))
+
+		try:
+			sa_prop = properties.sa(t)
+			src_sa_prop = properties.sa(s)
+		except:
+			continue
+		local_src_sa.append(src_sa_prop)
+		local_mean_sa.append(sa_prop)
+		if sa_prop > local_max_sa:
+			local_max_sa = sa_prop
+
+	if local_max_sa != 0:
+		max_sa.append(local_max_sa)
+		mean_sa.append(np.mean(local_mean_sa))
+
+
+	src_sa.append(np.mean(local_src_sa))
 
 	mean_src_num_h_acceptors.append(np.mean(src_num_h_acceptors))
 	mean_tgt_num_h_acceptors.append(np.mean(tgt_num_h_acceptors))
@@ -267,9 +291,18 @@ for i in range(0, end):
 	s_core = Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(Chem.MolFromSmiles(src_smiles)))
 	t_core = Chem.MolToSmiles(MurckoScaffold.GetScaffoldForMol(Chem.MolFromSmiles(tgt_smiles)))
 	scaffold_div_train.append(mmpa.similarity(s_core, t_core))
-	if i % 500 == 0 and i!=0:
+	training_tgt_sa.append(properties.sa(tgt_smiles))
+	if i == 5000:
 		break
 
+end = second_iter_seeds.shape[0]
+for i in range(0, end):
+	try:
+		dx = decoder(remove_spaces(''.join(second_iter_seeds.iloc[i])))
+		second_iter_seeds_sa.append(properties.sa(dx))
+	except:
+		continue
+embed()
 # cast to numpy array
 mean_tgt_num_rotatable = np.array(mean_tgt_num_rotatable)
 mean_src_num_rotatable = np.array(mean_src_num_rotatable)
@@ -277,7 +310,11 @@ mean_tgt_num_h_donors = np.array(mean_tgt_num_h_donors)
 mean_src_num_h_donors = np.array(mean_src_num_h_donors)
 mean_tgt_num_h_acceptors = np.array(mean_tgt_num_h_acceptors)
 mean_src_num_h_acceptors = np.array(mean_src_num_h_acceptors)
-
+max_sa = np.array(max_sa)
+mean_sa = np.array(mean_sa)
+src_sa = np.array(src_sa)
+second_iter_seeds_sa = np.array(second_iter_seeds_sa)
+training_tgt_sa = np.array(training_tgt_sa)
 prop_unique_scaffolds_per_seed = np.array(prop_unique_scaffolds_per_seed)
 prop_rgroup_edits = np.array(prop_rgroup_edits)
 prop_scaffold_edits = np.array(prop_scaffold_edits)
@@ -452,7 +489,6 @@ plt.legend()
 ax.set_yticklabels([])
 plt.savefig(output_dir+'/figs/hydrogen_acceptors.png')
 
-
 plt.cla()
 fig,ax=plt.subplots(1)
 plt.hist(mean_tgt_num_h_donors, alpha=0.5, density=True, label='Preds')
@@ -463,5 +499,28 @@ plt.legend()
 ax.set_yticklabels([])
 plt.savefig(output_dir+'/figs/hydrogen_donors.png')
 
+##########################################################################
+# SA plots
+plt.cla()
+fig,ax=plt.subplots(1)
+plt.hist(max_sa, alpha=0.5, density=True, label='Preds')
+plt.hist(src_sa, alpha=0.5, density=True, label='Seeds')
+plt.hist(second_iter_seeds_sa, alpha=0.5, density=True, label='Top SA Seeds')
+plt.xlabel("Max SA")
+plt.ylabel("Count")
+plt.legend()
+ax.set_yticklabels([])
+plt.savefig(output_dir+'/figs/max_sa.png')
+
+plt.cla()
+fig,ax=plt.subplots(1)
+plt.hist(mean_sa, alpha=0.5, density=True, label='Preds')
+plt.hist(src_sa, alpha=0.5, density=True, label='Seeds')
+plt.hist(second_iter_seeds_sa, alpha=0.5, density=True, label='Top SA Seeds')
+plt.xlabel("Mean SA")
+plt.ylabel("Count")
+plt.legend()
+ax.set_yticklabels([])
+plt.savefig(output_dir+'/figs/mean_sa.png')
 
 embed()

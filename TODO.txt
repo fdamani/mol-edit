@@ -1,6 +1,35 @@
+9.1
+	- rank by SA, compute mean and max of SA of candidate set per seed
+	- after rank by SA feed into seconditer and beam search 20 best.
+	- show that with ranking, the mean of SA of the candidate set is higher than
+		mean of SA of candidate set without ranking.
+
+8.27
+	- logp04 3.77 performance
+		python evaluate_batch.py /tigress/fdamani/mol-edit-data/data/logp04/src_baseline_test.csv /tigress/fdamani/mol-edit-data/data/logp04/src_train.csv /tigress/fdamani/mol-edit-data/data/logp04/tgt_train.csv /tigress/fdamani/mol-edit-output/onmt-logp04/preds/train_valid_share/output-firstiter-baseline-20beam-model-brnnenc-rnndec-2layer-600wordembed-600embed-shareembedding-mlpattention-adamoptim_step_99000.csv
+
+
+8.25
+	- there is a discrepancy between performance of our model on our own valiation set versus theirs. why?
+		- confirm that our validation samples do not exist in the training set.
+		- confirm that predictions look different compared to target (e.g. not overfitting somehow)
+		- compute a histogram over tokens in validation set vs jin test set vs training set
+			- if validation set and training set overlap significantly but jin test set is different that explains things well.
+
 8.22
+
 	we have two same models training on logp04 and qed.
 		logp04: /tigress/fdamani/mol-edit-output/onmt-logp04/checkpoints/train_valid_share/model-mlpattention/model-brnnenc-rnndec-2layer-600wordembed-600embed-shareembedding-mlpattention-adamoptim \
+		
+
+
+
+
+
+
+/tigress/fdamani/mol-edit-output/onmt-qed/checkpoints/train_valid_360_share/model-brnnenc-rnndec-2layer-600wordembed-600embed-shareembedding-mlpattention-adamoptim_step_98000.pt
+
+
 		qed: /tigress/fdamani/mol-edit-output/onmt-qed/checkpoints/train_valid_360_share/model-brnnenc-rnndec-2layer-600wordembed-600embed-shareembedding-mlpattention-adamoptim_step_2000.pt
 			- this needs to be filed under train_valid_share, not train_valid_360.
 
@@ -24,21 +53,6 @@
 		- apply to potency data.
 		- copy
 		- multi-objective optimization.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 	TODO
@@ -67,8 +81,6 @@
 		- start decay earlier (before 50k). 
 		- save all beam outputs
 			- take the one that meets similarity.
-
-
 
 
 
