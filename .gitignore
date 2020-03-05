@@ -2,3 +2,7 @@
 data/
 output/
 *.gz
+*.pt
+*.pth
+*.csv
+*.txt
